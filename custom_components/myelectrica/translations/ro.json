@@ -1,0 +1,47 @@
+{
+    "title": "MyElectrica România",
+    "config": {
+        "step": {
+            "user": {
+                "title": "Configurare MyElectrica",
+                "description": "Introduceți detaliile contului și informațiile de configurare.",
+                "data": {
+                    "username": "Nume de utilizator",
+                    "password": "Parolă",
+                    "cod_incasare": "Cod de încasare",
+                    "cod_client": "Cod client",
+                    "cod_nlc": "Cod loc de consum (NLC)",
+                    "update_interval": "Interval de actualizare (secunde)"
+                }
+            }
+        },
+        "error": {
+            "auth_failed": "Autentificare eșuată. Verificați datele introduse.",
+            "invalid_cod_incasare": "Codul de încasare este invalid.",
+            "invalid_cod_client": "Codul client este invalid.",
+            "invalid_cod_nlc": "Codul NLC este invalid.",
+            "connection_error": "Eroare de conexiune. Încercați din nou mai târziu."
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Modificați opțiunile pentru MyElectrica",
+                "description": "Actualizați informațiile contului și alte opțiuni.",
+                "data": {
+                    "username": "Nume de utilizator",
+                    "password": "Parolă",
+                    "cod_incasare": "Cod de încasare",
+                    "cod_client": "Cod client",
+                    "cod_nlc": "Cod loc de consum (NLC)",
+                    "update_interval": "Interval de actualizare (secunde)"
+                }
+            }
+        }
+    },
+    "system_messages": {
+        "entry_created": "Configurația a fost salvată cu succes.",
+        "options_updated": "Opțiunile au fost actualizate cu succes.",
+        "auth_in_progress": "Autentificare în curs..."
+    }
+}
