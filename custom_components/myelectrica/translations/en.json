@@ -1,0 +1,47 @@
+{
+    "title": "MyElectrica Romania",
+    "config": {
+        "step": {
+            "user": {
+                "title": "MyElectrica Configuration",
+                "description": "Enter your account details and configuration information.",
+                "data": {
+                    "username": "Username",
+                    "password": "Password",
+                    "cod_incasare": "Payment Code",
+                    "cod_client": "Client Code",
+                    "cod_nlc": "Consumption Location Code (NLC)",
+                    "update_interval": "Update Interval (seconds)"
+                }
+            }
+        },
+        "error": {
+            "auth_failed": "Authentication failed. Please check your credentials.",
+            "invalid_cod_incasare": "The payment code is invalid.",
+            "invalid_cod_client": "The client code is invalid.",
+            "invalid_cod_nlc": "The NLC code is invalid.",
+            "connection_error": "Connection error. Please try again later."
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Modify Options for MyElectrica",
+                "description": "Update your account details and other options.",
+                "data": {
+                    "username": "Username",
+                    "password": "Password",
+                    "cod_incasare": "Payment Code",
+                    "cod_client": "Client Code",
+                    "cod_nlc": "Consumption Location Code (NLC)",
+                    "update_interval": "Update Interval (seconds)"
+                }
+            }
+        }
+    },
+    "system_messages": {
+        "entry_created": "Configuration saved successfully.",
+        "options_updated": "Options updated successfully.",
+        "auth_in_progress": "Authentication in progress..."
+    }
+}
