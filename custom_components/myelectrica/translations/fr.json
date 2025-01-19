@@ -1,0 +1,47 @@
+{
+    "title": "MyElectrica Roumanie",
+    "config": {
+        "step": {
+            "user": {
+                "title": "Configuration de MyElectrica",
+                "description": "Entrez vos identifiants et les informations de configuration.",
+                "data": {
+                    "username": "Nom d'utilisateur",
+                    "password": "Mot de passe",
+                    "cod_incasare": "Code de paiement",
+                    "cod_client": "Code client",
+                    "cod_nlc": "Code de lieu de consommation (NLC)",
+                    "update_interval": "Intervalle de mise à jour (secondes)"
+                }
+            }
+        },
+        "error": {
+            "auth_failed": "Échec de l'authentification. Veuillez vérifier vos identifiants.",
+            "invalid_cod_incasare": "Le code de paiement est invalide.",
+            "invalid_cod_client": "Le code client est invalide.",
+            "invalid_cod_nlc": "Le code NLC est invalide.",
+            "connection_error": "Erreur de connexion. Veuillez réessayer plus tard."
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Modifier les Options pour MyElectrica",
+                "description": "Mettez à jour vos identifiants et d'autres options.",
+                "data": {
+                    "username": "Nom d'utilisateur",
+                    "password": "Mot de passe",
+                    "cod_incasare": "Code de paiement",
+                    "cod_client": "Code client",
+                    "cod_nlc": "Code de lieu de consommation (NLC)",
+                    "update_interval": "Intervalle de mise à jour (secondes)"
+                }
+            }
+        }
+    },
+    "system_messages": {
+        "entry_created": "Configuration enregistrée avec succès.",
+        "options_updated": "Options mises à jour avec succès.",
+        "auth_in_progress": "Authentification en cours..."
+    }
+}
