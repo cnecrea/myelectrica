@@ -107,7 +107,7 @@ class ContulMeuSensor(CoordinatorEntity, SensorEntity):
             "identifiers": {(DOMAIN, "myelectrica")},
             "name": "myElectrica România",
             "manufacturer": "Ciprian Nicolae (cnecrea)",
-            "model": "myElectrica România",
+            "model": "MyElectrica România",
             "entry_type": DeviceEntryType.SERVICE,
         }
 
@@ -187,7 +187,7 @@ class IndexCurentSensor(CoordinatorEntity, SensorEntity):
             "identifiers": {(DOMAIN, "myelectrica")},
             "name": "myElectrica România",
             "manufacturer": "Ciprian Nicolae (cnecrea)",
-            "model": "myElectrica România",
+            "model": "MyElectrica România",
             "entry_type": DeviceEntryType.SERVICE,
         }
 
@@ -263,7 +263,7 @@ class ConventieSensor(CoordinatorEntity, SensorEntity):
             "identifiers": {(DOMAIN, "myelectrica")},
             "name": "myElectrica România",
             "manufacturer": "Ciprian Nicolae (cnecrea)",
-            "model": "myElectrica România",
+            "model": "MyElectrica România",
             "entry_type": DeviceEntryType.SERVICE,
         }
 
@@ -354,7 +354,7 @@ class FacturaRestantaSensor(CoordinatorEntity, SensorEntity):
             "identifiers": {(DOMAIN, "myelectrica")},
             "name": "myElectrica România",
             "manufacturer": "Ciprian Nicolae (cnecrea)",
-            "model": "myElectrica România",
+            "model": "MyElectrica România",
             "entry_type": DeviceEntryType.SERVICE,
         }
 
@@ -447,6 +447,6 @@ class IstoricPlatiSensor(CoordinatorEntity, SensorEntity):
             "identifiers": {(DOMAIN, "myelectrica")},
             "name": "myElectrica România",
             "manufacturer": "Ciprian Nicolae (cnecrea)",
-            "model": "myElectrica România",
+            "model": "MyElectrica România",
             "entry_type": DeviceEntryType.SERVICE,
         }
