@@ -1,17 +1,4 @@
 {
     "name": "MyElectrica România",
-    "country": ["ro"],
-    "domain": "myelectrica",
-    "codeowners": ["@cnecrea"],
-    "requirements": [],
-    "iot_class": "cloud_polling",
-    "config_flow": true,
-    "documentation": "https://github.com/cnecrea/myelectrica",
-    "issue_tracker": "https://github.com/cnecrea/myelectrica/issues",
-    "render_readme": true,
-    "persistent_directory": "userfiles",
-    "content_in_root": false,
-    "version": "1.1.0",
-    "zip_release": true,
-    "filename": "myelectrica.zip"
+    "render_readme": true
 }
