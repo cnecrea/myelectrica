@@ -25,7 +25,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Run Hassfest
-        uses: home-assistant/actions/hassfest@main
+        uses: home-assistant/actions/hassfest@v1
 
   hacs:
     name: HACS Validation
