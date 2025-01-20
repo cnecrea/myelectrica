@@ -5,6 +5,7 @@ Inițializarea integrării MyElectrica România.
 import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 
 from .const import DOMAIN
 from .coordinator import MyElectricaCoordinator
@@ -13,6 +14,9 @@ _LOGGER = logging.getLogger(__name__)
 
 # Dacă ai mai multe platforme, le enumeri în această listă
 PLATFORMS = ["sensor"]
+
+# Adăugarea unei scheme implicite pentru configurările globale (dacă este cazul)
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: dict):
