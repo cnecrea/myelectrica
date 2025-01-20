@@ -1,16 +1,13 @@
----
 name: HACS Combined Jobs
 
 on:
   push:
-    branches:
-      - main
   pull_request:
-    branches:
-      - main
   release:
     types:
       - published
+  schedule:
+    - cron: "0 0 * * *" 
 
 permissions:
   contents: read
@@ -25,7 +22,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Run Hassfest
-        uses: home-assistant/actions/hassfest@v1
+        uses: home-assistant/actions/hassfest@master
 
   hacs:
     name: HACS Validation
@@ -34,6 +31,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Run HACS Action
-        uses: hacs/action@v2
+        uses: hacs/action@main
         with:
-          category: integration
+          category: "integration" 
