@@ -38,10 +38,5 @@
                 }
             }
         }
-    },
-    "system_messages": {
-        "entry_created": "Konfiguration erfolgreich gespeichert.",
-        "options_updated": "Optionen erfolgreich aktualisiert.",
-        "auth_in_progress": "Authentifizierung läuft..."
     }
 }
