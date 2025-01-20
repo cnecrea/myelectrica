@@ -1,18 +1,37 @@
-name: HACS Action
+name: HACS Combined Jobs
 
 on:
   push:
     branches:
       - main
   pull_request:
+    branches:
+      - main
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+  packages: read
+  statuses: write
 
 jobs:
-  hacs:
+  validate:
+    name: Hassfest Validation
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
+      - name: Run Hassfest
+        uses: home-assistant/actions/hassfest@v2
 
+  hacs:
+    name: HACS Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
       - name: Run HACS Action
         uses: hacs/action@v2
         with:
