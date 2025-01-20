@@ -1,12 +1,12 @@
 {
-    "dependencies": [],
-    "requirements": [],
-    "iot_class": "cloud_polling",
-    "config_flow": true,
     "domain": "myelectrica",
     "name": "MyElectrica România",
-    "version": "1.1.0",
+    "codeowners": ["@cnecrea"],
+    "config_flow": true,
+    "dependencies": [],
     "documentation": "https://github.com/cnecrea/myelectrica",
+    "iot_class": "cloud_polling",
     "issue_tracker": "https://github.com/cnecrea/myelectrica/issues",
-    "codeowners": ["@cnecrea"]
+    "requirements": [],
+    "version": "1.1.0"
 }
