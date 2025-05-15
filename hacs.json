@@ -1,5 +1,5 @@
 {
-    "name": "MyElectrica România",
-    "render_readme": true
-    "country": ["RO"],
+  "name": "MyElectrica România",
+  "render_readme": true,
+  "country": ["RO"]
 }
