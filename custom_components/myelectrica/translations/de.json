@@ -1,42 +1,58 @@
 {
-    "title": "MyElectrica Rumänien",
-    "config": {
-        "step": {
-            "user": {
-                "title": "MyElectrica-Konfiguration",
-                "description": "Geben Sie Ihre Kontodaten und Konfigurationsinformationen ein.",
-                "data": {
-                    "username": "Benutzername",
-                    "password": "Passwort",
-                    "cod_incasare": "Zahlungscode",
-                    "cod_client": "Kundencode",
-                    "cod_nlc": "Verbrauchsortcode (NLC)",
-                    "update_interval": "Aktualisierungsintervall (Sekunden)"
-                }
-            }
-        },
-        "error": {
-            "auth_failed": "Authentifizierung fehlgeschlagen. Bitte überprüfen Sie Ihre Zugangsdaten.",
-            "invalid_cod_incasare": "Der Zahlungscode ist ungültig.",
-            "invalid_cod_client": "Der Kundencode ist ungültig.",
-            "invalid_cod_nlc": "Der NLC-Code ist ungültig.",
-            "connection_error": "Verbindungsfehler. Bitte versuchen Sie es später erneut."
+  "config": {
+    "step": {
+      "user": {
+        "title": "MyElectrica-Konfiguration",
+        "description": "Geben Sie Ihre MyElectrica-Kontodaten ein.",
+        "data": {
+          "username": "E-Mail",
+          "password": "Passwort",
+          "cod_incasare": "Zahlungscode",
+          "cod_client": "Kundencode",
+          "cod_nlc": "NLC-Code (Verbrauchspunkt)",
+          "update_interval": "Aktualisierungsintervall (Sekunden)"
         }
+      }
     },
-    "options": {
-        "step": {
-            "init": {
-                "title": "Optionen für MyElectrica bearbeiten",
-                "description": "Aktualisieren Sie Ihre Kontodaten und andere Optionen.",
-                "data": {
-                    "username": "Benutzername",
-                    "password": "Passwort",
-                    "cod_incasare": "Zahlungscode",
-                    "cod_client": "Kundencode",
-                    "cod_nlc": "Verbrauchsortcode (NLC)",
-                    "update_interval": "Aktualisierungsintervall (Sekunden)"
-                }
-            }
-        }
+    "error": {
+      "auth_failed": "Authentifizierung fehlgeschlagen. Überprüfen Sie Ihre E-Mail und Ihr Passwort."
+    },
+    "abort": {
+      "already_configured": "Dieser Verbrauchspunkt (NLC) ist bereits konfiguriert."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "MyElectrica-Optionen",
+        "data": {
+          "username": "E-Mail",
+          "password": "Passwort",
+          "cod_incasare": "Zahlungscode",
+          "cod_client": "Kundencode",
+          "cod_nlc": "NLC-Code (Verbrauchspunkt)",
+          "update_interval": "Aktualisierungsintervall (Sekunden)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "contul_meu": {
+        "name": "MyElectrica"
+      },
+      "index_curent": {
+        "name": "Aktueller Zählerstand"
+      },
+      "conventie_consum": {
+        "name": "Verbrauchsvereinbarung"
+      },
+      "factura_restanta": {
+        "name": "Offene Rechnung"
+      },
+      "istoric_plati": {
+        "name": "Zahlungsverlauf"
+      }
+    }
+  }
 }
