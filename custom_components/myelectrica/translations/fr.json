@@ -1,42 +1,58 @@
 {
-    "title": "MyElectrica Roumanie",
-    "config": {
-        "step": {
-            "user": {
-                "title": "Configuration de MyElectrica",
-                "description": "Entrez vos identifiants et les informations de configuration.",
-                "data": {
-                    "username": "Nom d'utilisateur",
-                    "password": "Mot de passe",
-                    "cod_incasare": "Code de paiement",
-                    "cod_client": "Code client",
-                    "cod_nlc": "Code de lieu de consommation (NLC)",
-                    "update_interval": "Intervalle de mise à jour (secondes)"
-                }
-            }
-        },
-        "error": {
-            "auth_failed": "Échec de l'authentification. Veuillez vérifier vos identifiants.",
-            "invalid_cod_incasare": "Le code de paiement est invalide.",
-            "invalid_cod_client": "Le code client est invalide.",
-            "invalid_cod_nlc": "Le code NLC est invalide.",
-            "connection_error": "Erreur de connexion. Veuillez réessayer plus tard."
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configuration MyElectrica",
+        "description": "Entrez les informations de votre compte MyElectrica.",
+        "data": {
+          "username": "Email",
+          "password": "Mot de passe",
+          "cod_incasare": "Code de paiement",
+          "cod_client": "Code client",
+          "cod_nlc": "Code NLC (point de consommation)",
+          "update_interval": "Intervalle de mise à jour (secondes)"
         }
+      }
     },
-    "options": {
-        "step": {
-            "init": {
-                "title": "Modifier les Options pour MyElectrica",
-                "description": "Mettez à jour vos identifiants et d'autres options.",
-                "data": {
-                    "username": "Nom d'utilisateur",
-                    "password": "Mot de passe",
-                    "cod_incasare": "Code de paiement",
-                    "cod_client": "Code client",
-                    "cod_nlc": "Code de lieu de consommation (NLC)",
-                    "update_interval": "Intervalle de mise à jour (secondes)"
-                }
-            }
-        }
+    "error": {
+      "auth_failed": "Échec de l'authentification. Vérifiez votre email et mot de passe."
+    },
+    "abort": {
+      "already_configured": "Ce point de consommation (NLC) est déjà configuré."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options MyElectrica",
+        "data": {
+          "username": "Email",
+          "password": "Mot de passe",
+          "cod_incasare": "Code de paiement",
+          "cod_client": "Code client",
+          "cod_nlc": "Code NLC (point de consommation)",
+          "update_interval": "Intervalle de mise à jour (secondes)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "contul_meu": {
+        "name": "MyElectrica"
+      },
+      "index_curent": {
+        "name": "Index actuel"
+      },
+      "conventie_consum": {
+        "name": "Convention de consommation"
+      },
+      "factura_restanta": {
+        "name": "Facture impayée"
+      },
+      "istoric_plati": {
+        "name": "Historique des paiements"
+      }
+    }
+  }
 }
