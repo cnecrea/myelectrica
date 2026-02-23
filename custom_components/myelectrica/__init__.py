@@ -1,73 +1,45 @@
 """
 Inițializarea integrării MyElectrica România.
+
+Folosește pattern-ul modern `entry.runtime_data` pentru stocarea
+coordinator-ului (disponibil din HA 2024.x).
 """
 
+from __future__ import annotations
+
 import logging
+
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv
 
 from .const import DOMAIN
 from .coordinator import MyElectricaCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# Dacă ai mai multe platforme, le enumeri în această listă
-PLATFORMS = ["sensor"]
+PLATFORMS: list[Platform] = [Platform.SENSOR]
 
-# Adăugarea unei scheme implicite pentru configurările globale (dacă este cazul)
-CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+type MyElectricaConfigEntry = ConfigEntry[MyElectricaCoordinator]
 
 
-async def async_setup(hass: HomeAssistant, config: dict):
-    """
-    Setup global (rareori folosit) – doar dacă integrarea e definită și în configuration.yaml.
-    """
-    _LOGGER.debug("Inițializarea globală a integrării %s", DOMAIN)
-    return True
-
-
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
-    """
-    Configurează integrarea pentru o intrare de config_entries.
-    Creează coordinator, face primul refresh și configurează platformele (ex. sensor).
-    """
-    _LOGGER.debug("Configurare pentru entry_id=%s", entry.entry_id)
+async def async_setup_entry(hass: HomeAssistant, entry: MyElectricaConfigEntry) -> bool:
+    """Configurare intrare: creează coordinator, face primul refresh, setează platformele."""
+    _LOGGER.debug("[MyElectrica] Setup entry_id=%s", entry.entry_id)
 
     coordinator = MyElectricaCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
 
-    # Inițializăm stocarea datelor pe hass.data
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        "coordinator": coordinator,
-    }
+    # Stocăm coordinator-ul direct pe entry (pattern modern)
+    entry.runtime_data = coordinator
 
-    # Înregistrăm platformele (în loc de async_setup_platforms)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    _LOGGER.debug("Setup complet pentru entry_id=%s", entry.entry_id)
+    _LOGGER.debug("[MyElectrica] Setup complet pentru entry_id=%s", entry.entry_id)
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
-    """
-    Elimină o intrare din config_entries.
-    Descărcăm platformele și ștergem datele din hass.data.
-    """
-    _LOGGER.debug("Descărcare pentru entry_id=%s", entry.entry_id)
-
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-
-    return unload_ok
-
-
-async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry):
-    """
-    Reîncarcă o intrare din config_entries după reconfigurare.
-    """
-    _LOGGER.debug("Reîncărcare pentru entry_id=%s", entry.entry_id)
-    await async_unload_entry(hass, entry)
-    await async_setup_entry(hass, entry)
+async def async_unload_entry(hass: HomeAssistant, entry: MyElectricaConfigEntry) -> bool:
+    """Descarcă platformele la eliminarea intrării."""
+    _LOGGER.debug("[MyElectrica] Unload entry_id=%s", entry.entry_id)
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
