@@ -1,452 +1,426 @@
-"""
-Definirea senzorilor pentru integrarea MyElectrica România.
-"""
+"""Platforma Sensor pentru MyElectrica România."""
 
 import logging
 from datetime import datetime
+
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceEntryType
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, MONTHS_RO
+from .const import DOMAIN, ATTRIBUTION, MONTHS_EN_RO, MONTHS_NUM_RO
+from .coordinator import MyElectricaCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
-    """
-    Configurează entitățile de tip senzor pentru o intrare specifică din config_entries.
-    """
-    _LOGGER.debug("Configurarea senzorilor pentru entry_id=%s", entry.entry_id)
-
-    # Obținem coordinatorul din hass.data
-    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
-
-    # Creăm entitățile senzor
-    async_add_entities([
-        ContulMeuSensor(coordinator, entry.entry_id),
-        IndexCurentSensor(coordinator, entry.entry_id),
-        ConventieSensor(coordinator, entry.entry_id),
-        FacturaRestantaSensor(coordinator, entry.entry_id),
-        IstoricPlatiSensor(coordinator, entry.entry_id),
-    ])
-
-    _LOGGER.debug("Senzorii au fost adăugați pentru entry_id=%s", entry.entry_id)
+def format_ron(value: float) -> str:
+    """Formatează o valoare numerică în format românesc (1.234,56)."""
+    formatted = f"{value:,.2f}"
+    return formatted.replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-class ContulMeuSensor(CoordinatorEntity, SensorEntity):
-    """Senzor pentru afișarea informațiilor despre contul utilizatorului."""
+# ------------------------------------------------------------------------
+# Clasă de bază pentru toate entitățile MyElectrica România
+# ------------------------------------------------------------------------
+class MyElectricaEntity(CoordinatorEntity[MyElectricaCoordinator], SensorEntity):
+    """Clasă de bază pentru entitățile MyElectrica România."""
 
-    def __init__(self, coordinator, entry_id):
-        """Inițializează senzorul ContulMeu."""
+    _attr_has_entity_name = False
+
+    def __init__(self, coordinator: MyElectricaCoordinator, config_entry: ConfigEntry):
+        """Inițializare cu coordinator și config_entry."""
         super().__init__(coordinator)
-        self._entry_id = entry_id
-        self._attr_unique_id = f"{entry_id}_contulmeu"
-        self._attr_name = "MyElectrica"
-        self._entity_id = f"sensor.myelectrica_contul_meu_{entry_id}"
-        self._icon = "mdi:account-circle"
+        self._config_entry = config_entry
+        self._cod_incasare = config_entry.data["cod_incasare"]
+        self._custom_entity_id: str | None = None
 
     @property
-    def state(self):
-        """Returnează starea senzorului (statusul contractului)."""
-        return self.native_value
+    def entity_id(self) -> str | None:
+        """Returnează ID-ul entității."""
+        return self._custom_entity_id
+
+    @entity_id.setter
+    def entity_id(self, value: str) -> None:
+        """Setează ID-ul entității."""
+        self._custom_entity_id = value
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Returnează informațiile despre dispozitiv — comun tuturor entităților."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._cod_incasare)},
+            name=f"MyElectrica România ({self._cod_incasare})",
+            manufacturer="Ciprian Nicolae (cnecrea)",
+            model="MyElectrica România",
+            entry_type=DeviceEntryType.SERVICE,
+        )
+
+    def _get_response(self, key: str):
+        """
+        Extrage coordinator.data[key]["body"]["response"] în mod sigur.
+        Returnează None dacă orice nivel lipsește.
+        """
+        if not self.coordinator.data:
+            return None
+        raw = self.coordinator.data.get(key)
+        if not isinstance(raw, dict):
+            return None
+        body = raw.get("body")
+        if not isinstance(body, dict):
+            return None
+        return body.get("response")
+
+
+# ------------------------------------------------------------------------
+# async_setup_entry
+# ------------------------------------------------------------------------
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities,
+):
+    """Configurează senzorii pentru intrarea dată (config_entry)."""
+    coordinator: MyElectricaCoordinator = config_entry.runtime_data
+    cod_incasare = config_entry.data.get("cod_incasare", "")
+
+    sensors: list[SensorEntity] = []
+
+    _LOGGER.debug(
+        "Inițializare platforma sensor pentru %s (entry_id=%s, contract=%s).",
+        DOMAIN,
+        config_entry.entry_id,
+        cod_incasare,
+    )
+
+    # 1. Senzori de bază
+    sensors.append(ContulMeuSensor(coordinator, config_entry))
+    sensors.append(IndexCurentSensor(coordinator, config_entry))
+    sensors.append(ConventieConsumSensor(coordinator, config_entry))
+    sensors.append(FacturaRestantaSensor(coordinator, config_entry))
+    sensors.append(IstoricPlatiSensor(coordinator, config_entry))
+
+    _LOGGER.debug(
+        "Se adaugă %s senzori pentru %s (entry_id=%s, contract=%s).",
+        len(sensors),
+        DOMAIN,
+        config_entry.entry_id,
+        cod_incasare,
+    )
+
+    # Înregistrăm senzorii
+    async_add_entities(sensors)
+
+
+# ------------------------------------------------------------------------
+# ContulMeuSensor
+# ------------------------------------------------------------------------
+class ContulMeuSensor(MyElectricaEntity):
+    """Senzor pentru afișarea informațiilor despre contul utilizatorului."""
+
+    _attr_icon = "mdi:account-circle"
+    _attr_translation_key = "contul_meu"
+
+    def __init__(self, coordinator, config_entry):
+        super().__init__(coordinator, config_entry)
+        self._attr_name = "MyElectrica"
+        self._attr_unique_id = f"{DOMAIN}_contul_meu_{config_entry.entry_id}"
+        self._custom_entity_id = f"sensor.{DOMAIN}_{self._cod_incasare}_contul_meu"
 
     @property
     def native_value(self):
-        """
-        Returnează valoarea principală a senzorului.
-        În acest caz, afișăm codul clientului din configurarea intrării.
-        """
-        return self.coordinator.config_entry.data.get("cod_client", "Necunoscut")
+        """Returnează codul clientului ca valoare principală."""
+        return self._config_entry.data.get("cod_client", "Necunoscut")
 
     @property
     def extra_state_attributes(self):
-        """
-        Returnează atributele adiționale ale senzorului.
-        Acestea includ informații suplimentare despre contractul utilizatorului.
-        """
-        data = self.coordinator.data.get("contulmeu", {})
-        if data and "body" in data and "response" in data["body"]:
-            contract_data = data["body"]["response"]
-            return {
-                "Cod încasare": self.coordinator.config_entry.data.get("cod_incasare", "Necunoscut"),
-                "Cod loc de consum (NLC)": self.coordinator.config_entry.data.get("cod_nlc", "Necunoscut"),
-                "Cod client": self.coordinator.config_entry.data.get("cod_client", "Necunoscut"),
-                "Dată semnării contractului": contract_data.get("ContractDate", "Necunoscut"),
-                "Tip contract": contract_data.get("ContractType", "Necunoscut").capitalize(),
-            }
-        return {}
+        """Atribute adiționale — detalii contract."""
+        response = self._get_response("contulmeu")
+        if not response:
+            return {"attribution": ATTRIBUTION}
 
-    @property
-    def unique_id(self):
-        """Returnează ID-ul unic al senzorului."""
-        return self._attr_unique_id
-
-    @property
-    def entity_id(self):
-        """Returnează ID-ul entității."""
-        return self._entity_id
-
-    @entity_id.setter
-    def entity_id(self, value):
-        """Setează ID-ul entității."""
-        self._entity_id = value
-
-    @property
-    def icon(self):
-        """Returnează iconița asociată senzorului."""
-        return self._icon
-
-    @property
-    def device_info(self):
-        """Informații despre dispozitiv pentru integrare."""
-        return {
-            "identifiers": {(DOMAIN, "myelectrica")},
-            "name": "myElectrica România",
-            "manufacturer": "Ciprian Nicolae (cnecrea)",
-            "model": "MyElectrica România",
-            "entry_type": DeviceEntryType.SERVICE,
+        attributes = {
+            "Cod încasare": self._config_entry.data.get("cod_incasare", "Necunoscut"),
+            "Cod loc de consum (NLC)": self._config_entry.data.get("cod_nlc", "Necunoscut"),
+            "Cod client": self._config_entry.data.get("cod_client", "Necunoscut"),
+            "Dată semnării contractului": response.get("ContractDate", "Necunoscut"),
+            "Tip contract": response.get("ContractType", "Necunoscut").capitalize(),
         }
 
+        attributes["attribution"] = ATTRIBUTION
+        return attributes
 
-class IndexCurentSensor(CoordinatorEntity, SensorEntity):
+
+# ------------------------------------------------------------------------
+# IndexCurentSensor
+# ------------------------------------------------------------------------
+class IndexCurentSensor(MyElectricaEntity):
     """Senzor pentru afișarea informațiilor despre indexul curent al contorului."""
 
-    def __init__(self, coordinator, entry_id):
-        """Inițializează senzorul IndexCurent."""
-        super().__init__(coordinator)
-        self._entry_id = entry_id
-        self._attr_unique_id = f"{entry_id}_index_curent"
+    _attr_icon = "mdi:counter"
+    _attr_translation_key = "index_curent"
+
+    def __init__(self, coordinator, config_entry):
+        super().__init__(coordinator, config_entry)
         self._attr_name = "Index curent"
-        self._entity_id = f"sensor.myelectrica_index_curent_{entry_id}"
-        self._icon = "mdi:counter"
+        self._attr_unique_id = f"{DOMAIN}_index_curent_{config_entry.entry_id}"
+        self._custom_entity_id = f"sensor.{DOMAIN}_{self._cod_incasare}_index_curent"
+
+    def _get_first_cadran(self) -> tuple[dict | None, dict | None]:
+        """Returnează (contor, cadran) sau (None, None) dacă lipsesc."""
+        response = self._get_response("indexcurent")
+        if not response:
+            return None, None
+
+        contoare = response.get("to_Contor", [])
+        if not contoare:
+            return None, None
+
+        contor = contoare[0]
+        cadrane = contor.get("to_Cadran", [])
+        if not cadrane:
+            return contor, None
+
+        return contor, cadrane[0]
 
     @property
-    def state(self):
-        """Returnează starea senzorului (Index-ul curent)."""
-        data = self.coordinator.data.get("indexcurent", {})
-        if not data or "body" not in data or "response" not in data["body"]:
+    def native_value(self):
+        """Returnează valoarea indexului curent."""
+        _, cadran = self._get_first_cadran()
+        if cadran is None:
             return None
-
-        to_contor = data["body"]["response"].get("to_Contor", [])
-        if to_contor:
-            return to_contor[0]["to_Cadran"][0]["Index"]
-        return None
+        return cadran.get("Index")
 
     @property
     def extra_state_attributes(self):
-        """
-        Returnează atributele adiționale ale senzorului.
-        Acestea includ informații suplimentare despre contor.
-        """
-        data = self.coordinator.data.get("indexcurent", {})
-        if not data or "body" not in data or "response" not in data["body"]:
-            return {}
+        """Atribute adiționale — detalii contor și citire."""
+        response = self._get_response("indexcurent")
+        contor, cadran = self._get_first_cadran()
+        if contor is None or cadran is None:
+            return {"attribution": ATTRIBUTION}
 
-        attributes = {}
-        to_contor = data["body"]["response"].get("to_Contor", [])
-        if to_contor:
-            contor = to_contor[0]
-            cadran = contor.get("to_Cadran", [])[0]
-            attributes["Numărul dispozitivului"] = contor.get("SerieContor", "Necunoscut")
-            attributes["Data citirii"] = cadran.get("ReadingDate", "Necunoscut")
-            attributes["Ultima citire validată"] = cadran.get("Index", "Necunoscut")
-            attributes["Tipul citirii"] = cadran.get("MeterReadingType", "Necunoscut")
-            attributes["Perioadă citire contor începere"] = data["body"]["response"].get("StartDatePAC", "Necunoscut")
-            attributes["Perioadă citire contor sfârșit"] = data["body"]["response"].get("EndDatePAC", "Necunoscut")
+        attributes = {
+            "Numărul dispozitivului": contor.get("SerieContor", "Necunoscut"),
+            "Data citirii": cadran.get("ReadingDate", "Necunoscut"),
+            "Ultima citire validată": cadran.get("Index", "Necunoscut"),
+            "Tipul citirii": cadran.get("MeterReadingType", "Necunoscut"),
+            "Perioadă citire contor începere": response.get("StartDatePAC", "Necunoscut"),
+            "Perioadă citire contor sfârșit": response.get("EndDatePAC", "Necunoscut"),
+        }
 
+        attributes["attribution"] = ATTRIBUTION
         return attributes
 
-    @property
-    def unique_id(self):
-        """Returnează ID-ul unic al senzorului."""
-        return self._attr_unique_id
+
+# ------------------------------------------------------------------------
+# ConventieConsumSensor
+# ------------------------------------------------------------------------
+class ConventieConsumSensor(MyElectricaEntity):
+    """Senzor pentru afișarea datelor de convenție de consum."""
+
+    _attr_icon = "mdi:calendar-clock"
+    _attr_translation_key = "conventie_consum"
+
+    def __init__(self, coordinator, config_entry):
+        super().__init__(coordinator, config_entry)
+        self._attr_name = "Convenție consum"
+        self._attr_unique_id = f"{DOMAIN}_conventie_consum_{config_entry.entry_id}"
+        self._custom_entity_id = f"sensor.{DOMAIN}_{self._cod_incasare}_conventie_consum"
 
     @property
-    def entity_id(self):
-        """Returnează ID-ul entității."""
-        return self._entity_id
-
-    @entity_id.setter
-    def entity_id(self, value):
-        """Setează ID-ul entității."""
-        self._entity_id = value
-
-    @property
-    def icon(self):
-        """Returnează iconița asociată senzorului."""
-        return self._icon
-
-    @property
-    def device_info(self):
-        """Informații despre dispozitiv pentru integrare."""
-        return {
-            "identifiers": {(DOMAIN, "myelectrica")},
-            "name": "myElectrica România",
-            "manufacturer": "Ciprian Nicolae (cnecrea)",
-            "model": "MyElectrica România",
-            "entry_type": DeviceEntryType.SERVICE,
-        }
-
-
-class ConventieSensor(CoordinatorEntity, SensorEntity):
-    """Senzor pentru afișarea informațiilor despre convenția de consum."""
-
-    def __init__(self, coordinator, entry_id):
-        """Inițializează senzorul ConventieSensor."""
-        super().__init__(coordinator)
-        self._entry_id = entry_id
-        self._attr_unique_id = f"{entry_id}_conventie"
-        self._attr_name = "Conventie consum"
-        self._entity_id = f"sensor.myelectrica_conventie_{entry_id}"
-        self._icon = "mdi:calendar-clock"
-
-    @property
-    def state(self):
-        """Returnează starea senzorului (numărul de luni cu date nenule de consum)."""
-        data = self.coordinator.data.get("conventie", {})
-        if data and "body" in data and "response" in data["body"]:
-            conventie_data = data["body"]["response"]
-            # Filtrăm lunile care au valoare nenulă pentru "Quantity"
-            valid_months = [item for item in conventie_data if item.get("Quantity") != "0"]
-            return len(valid_months)
-        return 0
+    def native_value(self):
+        """Returnează numărul lunilor cu consum nenul."""
+        response = self._get_response("conventie")
+        if not response:
+            return 0
+        return len([item for item in response if item.get("Quantity") != "0"])
 
     @property
     def extra_state_attributes(self):
-        """
-        Returnează atributele adiționale ale senzorului.
-        Acestea includ datele lunare despre convenția de consum, inclusiv lunile cu "Quantity".
-        """
-        data = self.coordinator.data.get("conventie", {})
-        if data and "body" in data and "response" in data["body"]:
-            conventie_data = data["body"]["response"]
-            attributes = {}
+        """Atribute adiționale — detalii lunare consum."""
+        response = self._get_response("conventie")
+        if not response:
+            return {"attribution": ATTRIBUTION}
 
-            for item in conventie_data:
-                month = item.get("Month", "Necunoscut")
-                quantity = item.get("Quantity", "Necunoscut")
-                # Folosim denumirea lunii în limba română
-                month_name_ro = MONTHS_RO.get(month.zfill(2), "Necunoscut")
-                attributes[f"Luna {month_name_ro}"] = f"{quantity} kWh"
+        attributes = {}
 
-            return attributes
-        return {}
+        for item in response:
+            month = item.get("Month", "Necunoscut")
+            quantity = item.get("Quantity", "Necunoscut")
+            month_name = MONTHS_NUM_RO.get(month.zfill(2), "Necunoscut")
+            attributes[f"Luna {month_name}"] = f"{quantity} kWh"
 
-    @property
-    def unique_id(self):
-        """Returnează ID-ul unic al senzorului."""
-        return self._attr_unique_id
-
-    @property
-    def entity_id(self):
-        """Returnează ID-ul entității."""
-        return self._entity_id
-
-    @entity_id.setter
-    def entity_id(self, value):
-        """Setează ID-ul entității."""
-        self._entity_id = value
-
-    @property
-    def icon(self):
-        """Returnează iconița asociată senzorului."""
-        return self._icon
-
-    @property
-    def device_info(self):
-        """Informații despre dispozitiv pentru integrare."""
-        return {
-            "identifiers": {(DOMAIN, "myelectrica")},
-            "name": "myElectrica România",
-            "manufacturer": "Ciprian Nicolae (cnecrea)",
-            "model": "MyElectrica România",
-            "entry_type": DeviceEntryType.SERVICE,
-        }
+        attributes["attribution"] = ATTRIBUTION
+        return attributes
 
 
-class FacturaRestantaSensor(CoordinatorEntity, SensorEntity):
-    """Senzor pentru afișarea informațiilor despre facturile restante."""
+# ------------------------------------------------------------------------
+# FacturaRestantaSensor
+# ------------------------------------------------------------------------
+class FacturaRestantaSensor(MyElectricaEntity):
+    """Senzor pentru afișarea soldului restant al facturilor."""
 
-    def __init__(self, coordinator, entry_id):
-        """Inițializează senzorul FacturaRestantaSensor."""
-        super().__init__(coordinator)
-        self._entry_id = entry_id
-        self._attr_unique_id = f"{entry_id}_factura_restanta"
+    _attr_icon = "mdi:file-document-alert-outline"
+    _attr_translation_key = "factura_restanta"
+
+    def __init__(self, coordinator, config_entry):
+        super().__init__(coordinator, config_entry)
         self._attr_name = "Factură restantă"
-        self._entity_id = f"sensor.myelectrica_factura_restanta_{entry_id}"
-        self._icon = "mdi:file-document-alert-outline"
+        self._attr_unique_id = f"{DOMAIN}_factura_restanta_{config_entry.entry_id}"
+        self._custom_entity_id = f"sensor.{DOMAIN}_{self._cod_incasare}_factura_restanta"
+
+    def _facturi_neachitate(self) -> list[dict]:
+        """Filtrează și returnează lista facturilor neachitate."""
+        response = self._get_response("factura_restanta")
+        if not response:
+            return []
+        return [f for f in response if f.get("InvoiceStatus") == "neachitat"]
 
     @property
-    def state(self):
-        """Returnează starea principală a senzorului."""
-        data = self.coordinator.data.get("factura_restanta", {})
-        if not data or "body" not in data or "response" not in data["body"]:
-            return "Nu"
-
-        # Verificăm dacă există cel puțin o factură neachitată
-        for factura in data["body"]["response"]:
-            if factura.get("InvoiceStatus") == "neachitat":
-                return "Da"
-        return "Nu"
+    def native_value(self):
+        """Returnează starea principală (Da/Nu)."""
+        return "Da" if self._facturi_neachitate() else "Nu"
 
     @property
     def extra_state_attributes(self):
-        """
-        Returnează atributele adiționale ale senzorului.
-        Acestea includ detalii despre facturile neachitate, formate conform preferințelor de design.
-        """
-        data = self.coordinator.data.get("factura_restanta", {})
-        if not data or "body" not in data or "response" not in data["body"]:
-            return {}
+        """Atribute adiționale — detalii facturi neachitate."""
+        neachitate = self._facturi_neachitate()
+
+        if not neachitate:
+            return {
+                "Total neachitat": "0,00 lei",
+                "attribution": ATTRIBUTION,
+            }
 
         attributes = {}
-        total_unpaid = 0.0
+        total = 0.0
+        today = dt_util.now().date()
 
-        # Procesăm facturile neachitate
-        for idx, factura in enumerate(data["body"]["response"], start=1):
-            if factura.get("InvoiceStatus") == "neachitat":
-                unpaid_value = float(factura.get("UnpaidValue", 0))
-                total_unpaid += unpaid_value
+        for idx, factura in enumerate(neachitate, start=1):
+            unpaid = float(factura.get("UnpaidValue", 0))
+            if unpaid <= 0:
+                continue
 
-                issue_date = factura.get("IssueDate", "Necunoscut")
-                try:
-                    parsed_date = datetime.strptime(issue_date, "%Y-%m-%d")
-                    month_name_en = parsed_date.strftime("%B")
-                    month_name_ro = MONTHS_RO.get(month_name_en, "necunoscut")
-                except ValueError:
-                    month_name_ro = "necunoscut"
+            total += unpaid
 
-                attributes[f"Restanță pe luna {month_name_ro} (#{idx})"] = f"{unpaid_value:.2f} lei"
-                attributes[f"Factură #{idx} - Scadență"] = factura.get("DueDate", "Necunoscut")
+            # Luna din IssueDate (YYYY-MM-DD)
+            issue_raw = factura.get("IssueDate")
+            month_name = "necunoscut"
+            try:
+                parsed_issue = datetime.strptime(issue_raw, "%Y-%m-%d")
+                month_number = parsed_issue.strftime("%m")
+                month_name = MONTHS_NUM_RO.get(month_number, "necunoscut")
+            except (ValueError, TypeError):
+                pass
 
-        attributes["---------------"] = ""
-        attributes["Total neachitat"] = f"{total_unpaid:.2f} lei" if total_unpaid > 0 else "0.00 lei"
+            # Calcul scadență
+            due_raw = factura.get("DueDate")
+            try:
+                parsed_due = datetime.strptime(due_raw, "%Y-%m-%d")
+                days_until_due = (parsed_due.date() - today).days
+
+                if days_until_due < 0:
+                    unit = "zi" if abs(days_until_due) == 1 else "zile"
+                    message = (
+                        f"{format_ron(unpaid)} lei — termen depășit cu "
+                        f"{abs(days_until_due)} {unit}"
+                    )
+                elif days_until_due == 0:
+                    message = f"{format_ron(unpaid)} lei — scadentă astăzi"
+                else:
+                    unit = "zi" if days_until_due == 1 else "zile"
+                    message = (
+                        f"{format_ron(unpaid)} lei — scadentă în "
+                        f"{days_until_due} {unit}"
+                    )
+
+            except (ValueError, TypeError):
+                message = f"{format_ron(unpaid)} lei — scadență necunoscută"
+
+            attributes[f"Restanță pe luna {month_name} (#{idx})"] = message
+
+        attributes["Total neachitat"] = (
+            format_ron(total) + " lei" if total > 0 else "0,00 lei"
+        )
+        attributes["attribution"] = ATTRIBUTION
+
         return attributes
 
-    @property
-    def unique_id(self):
-        """Returnează ID-ul unic al senzorului."""
-        return self._attr_unique_id
 
-    @property
-    def entity_id(self):
-        """Returnează ID-ul entității."""
-        return self._entity_id
-
-    @entity_id.setter
-    def entity_id(self, value):
-        """Setează ID-ul entității."""
-        self._entity_id = value
-
-    @property
-    def icon(self):
-        """Returnează iconița asociată senzorului."""
-        return self._icon
-
-    @property
-    def device_info(self):
-        """Informații despre dispozitiv pentru integrare."""
-        return {
-            "identifiers": {(DOMAIN, "myelectrica")},
-            "name": "myElectrica România",
-            "manufacturer": "Ciprian Nicolae (cnecrea)",
-            "model": "MyElectrica România",
-            "entry_type": DeviceEntryType.SERVICE,
-        }
-
-
-class IstoricPlatiSensor(CoordinatorEntity, SensorEntity):
+# ------------------------------------------------------------------------
+# IstoricPlatiSensor
+# ------------------------------------------------------------------------
+class IstoricPlatiSensor(MyElectricaEntity):
     """Senzor pentru afișarea istoricului de plăți din ultimele 12 luni."""
 
-    def __init__(self, coordinator, entry_id):
-        """Inițializează senzorul IstoricPlati."""
-        super().__init__(coordinator)
-        self._entry_id = entry_id
-        self._attr_unique_id = f"{entry_id}_istoric_plati"
+    _attr_icon = "mdi:cash-check"
+    _attr_translation_key = "istoric_plati"
+
+    def __init__(self, coordinator, config_entry):
+        super().__init__(coordinator, config_entry)
         self._attr_name = "Istoric plăți"
-        self._entity_id = f"sensor.myelectrica_istoric_plati_{entry_id}"
-        self._icon = "mdi:cash-check"
+        self._attr_unique_id = f"{DOMAIN}_istoric_plati_{config_entry.entry_id}"
+        self._custom_entity_id = f"sensor.{DOMAIN}_{self._cod_incasare}_istoric_plati"
+
+    def _facturi_achitate(self) -> list[dict]:
+        """Returnează facturile achitate (maxim 12)."""
+        response = self._get_response("facturi")
+        if not response:
+            return []
+        achitate = [f for f in response if f.get("InvoiceStatus") == "achitat"]
+        return achitate[:12]
 
     @property
-    def state(self):
-        """Returnează starea senzorului (numărul total al facturilor plătite)."""
-        data = self.coordinator.data.get("facturi", {})
-        if data and "body" in data and "response" in data["body"]:
-            facturi_platite = [
-                factura for factura in data["body"]["response"]
-                if factura.get("InvoiceStatus") == "achitat"
-            ]
-            return len(facturi_platite[:12])  # Numărăm ultimele 12 facturi
-        return 0
+    def native_value(self):
+        """Returnează numărul facturilor achitate (max 12)."""
+        return len(self._facturi_achitate())
 
     @property
     def extra_state_attributes(self):
-        """
-        Returnează atributele adiționale ale senzorului.
-        Acestea includ detalii despre ultimele 12 facturi achitate.
-        """
-        data = self.coordinator.data.get("facturi", {})
-        if not data or "body" not in data or "response" not in data["body"]:
-            return {}
+        """Atribute adiționale — detalii facturi achitate."""
+        achitate = self._facturi_achitate()
+        if not achitate:
+            return {
+                "Total": "0,00 lei",
+                "attribution": ATTRIBUTION,
+            }
 
         attributes = {}
-        total_amount = 0.0
+        total = 0.0
 
-        for factura in data["body"]["response"]:
-            if factura.get("InvoiceStatus") == "achitat":
-                issue_date = factura.get("IssueDate", "Necunoscut")
-                try:
-                    parsed_date = datetime.strptime(issue_date, "%Y-%m-%d")
-                    day = parsed_date.day
-                    year = parsed_date.year
-                    month_name_en = parsed_date.strftime("%B")
-                    month_name_ro = MONTHS_RO.get(month_name_en, "necunoscut")
-                    friendly_date = f"Emisă la {day} {month_name_ro} {year}"
-                except ValueError:
-                    friendly_date = "Necunoscut"
+        for factura in achitate:
+            issue_date = factura.get("IssueDate", "")
+            amount = float(factura.get("TotalAmount", 0))
+            total += amount
 
-                amount = float(factura.get("TotalAmount", 0))
-                total_amount += amount
+            friendly = _format_date_ro(issue_date)
+            attributes[f"Emisă la {friendly}"] = f"{format_ron(amount)} lei"
 
-                # Adăugăm data emisiei ca cheie și valoarea facturii ca valoare
-                attributes[f"{friendly_date}"] = f"{amount:.2f} lei"
-
-        # Separator și total
         attributes["---------------"] = ""
-        attributes["Total"] = f"{total_amount:.2f} lei"
+        attributes["Total"] = f"{format_ron(total)} lei"
+        attributes["attribution"] = ATTRIBUTION
         return attributes
 
-    @property
-    def unique_id(self):
-        """Returnează ID-ul unic al senzorului."""
-        return self._attr_unique_id
 
-    @property
-    def entity_id(self):
-        """Returnează ID-ul entității."""
-        return self._entity_id
+# ------------------------------------------------------------------------
+# Utilități
+# ------------------------------------------------------------------------
+def _parse_month_ro(date_str: str) -> str:
+    """Extrage luna în română dintr-un string ISO (YYYY-MM-DD)."""
+    try:
+        parsed = datetime.strptime(date_str, "%Y-%m-%d")
+        return MONTHS_EN_RO.get(parsed.strftime("%B"), "necunoscut")
+    except (ValueError, TypeError):
+        return "necunoscut"
 
-    @entity_id.setter
-    def entity_id(self, value):
-        """Setează ID-ul entității."""
-        self._entity_id = value
 
-    @property
-    def icon(self):
-        """Returnează iconița asociată senzorului."""
-        return self._icon
-
-    @property
-    def device_info(self):
-        """Informații despre dispozitiv pentru integrare."""
-        return {
-            "identifiers": {(DOMAIN, "myelectrica")},
-            "name": "myElectrica România",
-            "manufacturer": "Ciprian Nicolae (cnecrea)",
-            "model": "MyElectrica România",
-            "entry_type": DeviceEntryType.SERVICE,
-        }
+def _format_date_ro(date_str: str) -> str:
+    """Formatează o dată ISO ca '5 ianuarie 2025'."""
+    try:
+        parsed = datetime.strptime(date_str, "%Y-%m-%d")
+        month = MONTHS_EN_RO.get(parsed.strftime("%B"), "necunoscut")
+        return f"{parsed.day} {month} {parsed.year}"
+    except (ValueError, TypeError):
+        return "Necunoscut"
