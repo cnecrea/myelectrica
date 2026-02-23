@@ -1,33 +1,57 @@
 """
 Coordinator pentru integrarea MyElectrica România.
+
+Adună periodic datele de la API într-un singur dict (`self.data`)
+pe care senzorii îl citesc fără a face request-uri directe.
 """
 
+from __future__ import annotations
+
 import logging
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from datetime import timedelta
+from typing import Any
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.update_coordinator import (
+    DataUpdateCoordinator,
+    UpdateFailed,
+)
 
 from .api import MyElectricaAPI
-from .const import DEFAULT_UPDATE
+from .const import DEFAULT_UPDATE, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-class MyElectricaCoordinator(DataUpdateCoordinator):
+type MyElectricaConfigEntry = ConfigEntry[MyElectricaCoordinator]
+
+
+class MyElectricaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """
-    Coordinator care adună toate datele necesare într-un singur loc.
-    `self.data` va fi un dicționar cu chei relevante pentru fiecare tip de informație:
-      {
-        "contulmeu": ...,
-        "indexcurent": ...,
-        "conventie": ...,
-        "factura_restanta": ...,
-        "facturi": ...
-      }
+    Coordinator central.
+
+    `self.data` conține:
+    {
+        "contulmeu":        dict | None,
+        "indexcurent":      dict | None,
+        "conventie":        dict | None,
+        "factura_restanta": dict | None,   # identic cu "facturi" (filtrat în senzor)
+        "facturi":          dict | None,
+    }
     """
 
-    def __init__(self, hass: HomeAssistant, config_entry):
-        self.hass = hass
-        self.config_entry = config_entry
+    config_entry: MyElectricaConfigEntry
+
+    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
+        update_seconds = config_entry.data.get("update_interval", DEFAULT_UPDATE)
+
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=DOMAIN,
+            update_interval=timedelta(seconds=update_seconds),
+            config_entry=config_entry,
+        )
 
         self.api = MyElectricaAPI(
             hass,
@@ -37,40 +61,26 @@ class MyElectricaCoordinator(DataUpdateCoordinator):
             cod_nlc=config_entry.data["cod_nlc"],
         )
 
-        update_interval_seconds = config_entry.data.get("update_interval", DEFAULT_UPDATE)
-        update_interval = timedelta(seconds=update_interval_seconds)
+    async def _async_update_data(self) -> dict[str, Any]:
+        """Fetch periodic — colectează toate endpoint-urile și returnează un dict."""
+        _LOGGER.debug("[MyElectrica] Începe actualizarea datelor")
 
-        super().__init__(
-            hass,
-            _LOGGER,
-            name="MyElectricaCoordinator",
-            update_interval=update_interval,
-        )
-
-    async def _async_update_data(self):
-        """
-        Metodă apelată periodic de Coordinator (sau la cerere).
-        Întoarce un dict cu toate datele, astfel încât senzorii să le poată folosi.
-        """
         try:
-            contulmeu_data = await self.api.async_get_contul_meu()
-            indexcurent_data = await self.api.async_get_index_curent()
-            conventie_data = await self.api.async_get_conventie()
-            facturi_data = await self.api.async_get_facturi()
-
-            # Putem separa "factura_restanta" de "facturi" dacă dorim
-            # facturile restante pot fi filtrate din facturi_data
-            # DAR pentru a păstra EXACT structura existentă din senzori,
-            # punem tot obiectul complet la "facturi", și încă unul la "factura_restanta".
-            data = {
-                "contulmeu": contulmeu_data,
-                "indexcurent": indexcurent_data,
-                "conventie": conventie_data,
-                "factura_restanta": facturi_data,
-                "facturi": facturi_data,
-            }
-            return data
+            contulmeu = await self.api.async_get_contul_meu()
+            indexcurent = await self.api.async_get_index_curent()
+            conventie = await self.api.async_get_conventie()
+            facturi = await self.api.async_get_facturi()
         except Exception as err:
-            # Orice excepție apare, o marcăm drept UpdateFailed
-            _LOGGER.error("Eroare în _async_update_data: %s", err)
-            raise UpdateFailed(f"Eroare la actualizarea datelor: {err}")
+            _LOGGER.error("[MyElectrica] Eroare la actualizare: %s", err)
+            raise UpdateFailed(f"Eroare la actualizarea datelor: {err}") from err
+
+        data: dict[str, Any] = {
+            "contulmeu": contulmeu,
+            "indexcurent": indexcurent,
+            "conventie": conventie,
+            "factura_restanta": facturi,
+            "facturi": facturi,
+        }
+
+        _LOGGER.debug("[MyElectrica] Actualizare completă")
+        return data
