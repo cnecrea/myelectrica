@@ -2,23 +2,30 @@
   "config": {
     "step": {
       "user": {
-        "title": "Configurare MyElectrica",
-        "description": "Introdu datele contului tău MyElectrica.",
+        "title": "Conectează-te la MyElectrica",
+        "description": "Completează email-ul și parola contului tău MyElectrica. Sistemul va descoperi automat codurile de client și locurile de consum asociate.",
         "data": {
           "username": "Email",
           "password": "Parolă",
-          "cod_incasare": "Cod încasare",
-          "cod_client": "Cod client",
-          "cod_nlc": "Cod NLC (loc de consum)",
           "update_interval": "Interval actualizare (secunde)"
+        }
+      },
+      "select_nlc": {
+        "title": "Alege locurile de consum de monitorizat",
+        "description": "Poți monitoriza toate locurile de consum sau doar anumite dintre ele. Selectează ce dorești să urmărești.",
+        "data": {
+          "select_all": "Monitorizează toate locurile de consum",
+          "selected_nlcs": "Selectează locurile de consum dorite"
         }
       }
     },
     "error": {
-      "auth_failed": "Autentificare eșuată. Verifică email-ul și parola."
+      "auth_failed": "Autentificare eșuată. Verifică email-ul și parola.",
+      "no_data": "Autentificare reușită, dar nu s-au găsit date asociate contului.",
+      "no_nlc_selected": "Trebuie să selectezi cel puțin un loc de consum sau să activezi opțiunea pentru toate."
     },
     "abort": {
-      "already_configured": "Acest loc de consum (NLC) este deja configurat."
+      "already_configured": "Acest cont MyElectrica este deja configurat."
     }
   },
   "options": {
@@ -28,30 +35,57 @@
         "data": {
           "username": "Email",
           "password": "Parolă",
-          "cod_incasare": "Cod încasare",
-          "cod_client": "Cod client",
-          "cod_nlc": "Cod NLC (loc de consum)",
           "update_interval": "Interval actualizare (secunde)"
         }
+      },
+      "select_nlc": {
+        "title": "Alege locurile de consum de monitorizat",
+        "description": "Modifică selecția locurilor de consum pe care vrei să le monitorizezi.",
+        "data": {
+          "select_all": "Monitorizează toate locurile de consum",
+          "selected_nlcs": "Selectează locurile de consum dorite"
+        }
       }
+    },
+    "error": {
+      "auth_failed": "Autentificare eșuată. Verifică email-ul și parola.",
+      "no_data": "Autentificare reușită, dar nu s-au găsit date asociate contului.",
+      "no_nlc_selected": "Trebuie să selectezi cel puțin un loc de consum sau să activezi opțiunea pentru toate."
     }
   },
   "entity": {
     "sensor": {
-      "contul_meu": {
-        "name": "MyElectrica"
+      "date_contract": {
+        "name": "Date contract"
+      },
+      "date_client": {
+        "name": "Date client"
       },
       "index_curent": {
         "name": "Index curent"
       },
+      "istoric_citiri": {
+        "name": "Istoric citiri"
+      },
+      "citire_permisa": {
+        "name": "Citire permisă"
+      },
       "conventie_consum": {
         "name": "Convenție consum"
+      },
+      "arhivafacturi": {
+        "name": "Arhivă facturi"
       },
       "factura_restanta": {
         "name": "Factură restantă"
       },
-      "istoric_plati": {
-        "name": "Istoric plăți"
+      "arhiva_plati": {
+        "name": "Arhivă plăți"
+      }
+    },
+    "button": {
+      "trimite_index": {
+        "name": "Trimite index"
       }
     }
   }
