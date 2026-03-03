@@ -1,8 +1,22 @@
 {
-  "generat_la": "2026-03-03T21:02:50.280Z",
+  "generat_la": "2026-03-03T22:43:59.801Z",
   "repository": "cnecrea/myelectrica",
   "total_descarcari": 59,
   "pe_release": [
+    {
+      "tag": "2.1.0",
+      "nume": "2.1.0",
+      "prerelease": false,
+      "publicat_la": "2026-03-03T22:43:49Z",
+      "descarcari": 0,
+      "assets": [
+        {
+          "nume": "myelectrica.zip",
+          "descarcari": 0,
+          "url": "https://github.com/cnecrea/myelectrica/releases/download/2.1.0/myelectrica.zip"
+        }
+      ]
+    },
     {
       "tag": "2.0.0",
       "nume": "2.0.0",
@@ -75,6 +89,12 @@
     }
   ],
   "pe_asset": [
+    {
+      "tag": "2.1.0",
+      "nume": "myelectrica.zip",
+      "descarcari": 0,
+      "url": "https://github.com/cnecrea/myelectrica/releases/download/2.1.0/myelectrica.zip"
+    },
     {
       "tag": "2.0.0",
       "nume": "myelectrica.zip",
