@@ -2,6 +2,11 @@
 ![logo-my-electrica](https://github.com/user-attachments/assets/4f8abcd2-b470-4521-918e-036fc8e7354c)
 
 # MyElectrica România - Integrare pentru Home Assistant 🏠🇷🇴
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![GitHub Release](https://img.shields.io/github/v/release/cnecrea/myelectrica)](https://github.com/cnecrea/myelectrica/releases)
+![Total descărcări pentru toate versiunile](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cnecrea/myelectrica/main/statistici/shields/descarcari.json)
+![Descărcări pentru ultima versiune](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cnecrea/myelectrica/main/statistici/shields/ultima_release.json)
+
 
 Această integrare pentru Home Assistant oferă **monitorizare completă** a datelor contractuale și a consumului pentru utilizatorii MyElectrica România. Integrarea este configurabilă prin interfața UI și permite afișarea datelor despre contract, indexuri curente, facturi restante și istoricul plăților. 🚀
 
