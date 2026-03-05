@@ -552,14 +552,16 @@ class ConventieConsumSensor(MyElectricaEntity):
             return response
         return []
 
-    @property
-    def native_value(self):
-        """Total kWh convenție (suma lunilor nenule)."""
-        items = self._get_convention()
-        if not items:
-            return 0
-        total = sum(safe_float(item.get("Quantity")) for item in items)
-        return int(total) if total == int(total) else total
+  @property
+  def native_value(self):
+      """Indică dacă există consum în convenție."""
+      items = self._get_convention()
+      if not items:
+          return "Nu"
+  
+      total = sum(safe_float(item.get("Quantity")) for item in items)
+  
+      return "Da" if total > 0 else "Nu"
 
     @property
     def extra_state_attributes(self):
