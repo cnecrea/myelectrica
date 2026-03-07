@@ -127,9 +127,12 @@ class MyElectricaAPI:
             async with self._session.get(
                 url, headers=headers, timeout=REQUEST_TIMEOUT
             ) as resp:
-                if resp.status == 200:
+                if 200 <= resp.status < 300:
                     data = await resp.json()
-                    _LOGGER.debug("[MyElectrica] GET OK: %s — Received data: %s", url, data)
+                    _LOGGER.debug(
+                        "[MyElectrica] GET OK (HTTP %s): %s — Received data: %s",
+                        resp.status, url, data,
+                    )
                     return data
 
                 if resp.status == 401:
@@ -275,9 +278,12 @@ class MyElectricaAPI:
             async with self._session.post(
                 url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT
             ) as resp:
-                if resp.status == 200:
+                if 200 <= resp.status < 300:
                     data = await resp.json()
-                    _LOGGER.debug("[MyElectrica] POST OK: %s — Received data: %s", url, data)
+                    _LOGGER.debug(
+                        "[MyElectrica] POST OK (HTTP %s): %s — Received data: %s",
+                        resp.status, url, data,
+                    )
                     return data
 
                 if resp.status == 401:
@@ -287,12 +293,19 @@ class MyElectricaAPI:
                     self._token = None
                     return None
 
+                # Eroare API (4xx/5xx non-401) — returnăm JSON-ul
+                # ca dict, NU None, ca să nu declanșeze retry inutil.
+                try:
+                    error_data = await resp.json()
+                except Exception:
+                    error_data = {"status": str(resp.status), "errors": [
+                        {"errorMessage": await resp.text()}
+                    ]}
                 _LOGGER.error(
                     "[MyElectrica] POST HTTP %s — URL: %s — răspuns: %s",
-                    resp.status,
-                    url,
-                    await resp.text(),
+                    resp.status, url, error_data,
                 )
+                return error_data
         except aiohttp.ClientError as err:
             _LOGGER.error("[MyElectrica] Eroare conexiune POST: %s — %s", url, err)
         except TimeoutError:
