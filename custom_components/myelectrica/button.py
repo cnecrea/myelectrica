@@ -166,6 +166,16 @@ class TrimiteIndexButton(
         if contract_resp:
             product_name = contract_resp.get("ProductName", "")
 
+        # Fallback: dacă ProductName e gol, caută ServiceType din ierarhie
+        if not product_name:
+            hierarchy = self.coordinator.data.get("hierarchy", [])
+            for client in hierarchy:
+                for contract in client.get("to_ContContract", []):
+                    for loc in contract.get("to_LocConsum", []):
+                        if loc.get("IdLocConsum") == self._ctx.nlc:
+                            product_name = loc.get("ServiceType", "")
+                            break
+
         return serie_contor, register_code, product_name
 
     def _get_input_number_entity_id(self, product_name: str) -> str | None:
@@ -269,10 +279,16 @@ class TrimiteIndexButton(
                     error_details,
                 )
             elif errors:
+                # Extragem mesajele de eroare pentru log clar
+                err_msgs = [
+                    e.get("errorMessage", str(e))
+                    for e in errors
+                    if isinstance(e, dict)
+                ] or [str(errors)]
                 _LOGGER.error(
-                    "[MyElectrica] Erori la trimitere index NLC %s: %s",
+                    "[MyElectrica] Eroare trimitere index NLC %s: %s",
                     self._ctx.nlc,
-                    errors,
+                    "; ".join(err_msgs),
                 )
             else:
                 _LOGGER.info(
@@ -286,7 +302,8 @@ class TrimiteIndexButton(
                 await self.coordinator.async_request_refresh()
         else:
             _LOGGER.error(
-                "[MyElectrica] Trimitere index eșuată pentru NLC %s "
-                "(răspuns None)",
+                "[MyElectrica] Trimitere index eșuată pentru NLC %s — "
+                "API-ul nu a returnat date (posibil eroare de rețea sau "
+                "timeout; verifică logurile anterioare)",
                 self._ctx.nlc,
             )
