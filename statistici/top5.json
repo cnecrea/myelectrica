@@ -1,5 +1,5 @@
 {
-  "generat_la": "2026-03-10T03:07:57.882Z",
+  "generat_la": "2026-03-11T03:07:16.703Z",
   "top": [
     {
       "tag": "1.0.0",
@@ -62,11 +62,11 @@
       "nume": "2.0.0",
       "prerelease": false,
       "publicat_la": "2026-02-23T22:10:21Z",
-      "descarcari": 2,
+      "descarcari": 3,
       "assets": [
         {
           "nume": "myelectrica.zip",
-          "descarcari": 2,
+          "descarcari": 3,
           "url": "https://github.com/cnecrea/myelectrica/releases/download/2.0.0/myelectrica.zip"
         }
       ]
