@@ -15,7 +15,7 @@
 [![Limbaj Principal](https://img.shields.io/github/languages/top/cnecrea/myelectrica)](https://github.com/cnecrea/myelectrica)
 [![Total descărcări](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cnecrea/myelectrica/main/statistici/shields/descarcari.json)](https://github.com/cnecrea/myelectrica/releases)
 [![Descărcări ultima versiune](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cnecrea/myelectrica/main/statistici/shields/ultima_release.json)](https://github.com/cnecrea/myelectrica/releases/latest)
-![Badge](https://hitscounter.dev/api/hit?url=https%3A%2F%2Fgithub.com%2Fcnecrea%2Fmyelectrica&label=vizitatori&icon=github&color=%23198754&message=&style=flat&tz=Europe%2FBucharest)
+![Badge](https://hitscounter.dev/api/hit?url=https%3A%2F%2Fgithub.com%2Fcnecrea%2Fmyelectrica&label=afi%C8%99%C4%83ri&icon=github&color=%23198754&message=&style=flat&tz=Europe%2FBucharest)
 
 
 Integrare custom pentru [Home Assistant](https://www.home-assistant.io/) care monitorizează datele contractuale, consumul și facturile prin API-ul [MyElectrica România](https://myelectrica.ro/).
