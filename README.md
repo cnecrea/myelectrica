@@ -5,11 +5,8 @@
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 [![GitHub Release](https://img.shields.io/github/v/release/cnecrea/myelectrica)](https://github.com/cnecrea/myelectrica/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/cnecrea/myelectrica?style=flat&logo=github)](https://github.com/cnecrea/myelectrica/stargazers)
-[![GitHub Forks](https://img.shields.io/github/forks/cnecrea/myelectrica?style=flat&logo=github)](https://github.com/cnecrea/myelectrica/network/members)
-[![GitHub Issues](https://img.shields.io/github/issues/cnecrea/myelectrica)](https://github.com/cnecrea/myelectrica/issues)
-[![Ultimul Commit](https://img.shields.io/github/last-commit/cnecrea/myelectrica)](https://github.com/cnecrea/myelectrica/commits/main)
-[![Commit-uri/lună](https://img.shields.io/github/commit-activity/m/cnecrea/myelectrica)](https://github.com/cnecrea/myelectrica/commits/main)
-[![Limbaj Principal](https://img.shields.io/github/languages/top/cnecrea/myelectrica)](https://github.com/cnecrea/myelectrica)
+[![Total descărcări](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cnecrea/myelectrica/main/statistici/shields/descarcari.json)](https://github.com/cnecrea/myelectrica/releases)
+[![Descărcări ultima versiune](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cnecrea/myelectrica/main/statistici/shields/ultima_release.json)](https://github.com/cnecrea/myelectrica/releases/latest)
 ![Afișări](https://hitscounter.dev/api/hit?url=https%3A%2F%2Fgithub.com%2Fcnecrea%2Fmyelectrica&label=afi%C8%99%C4%83ri&icon=github&color=%23198754&message=&style=flat&tz=Europe%2FBucharest)
 
 Integrare custom pentru [Home Assistant](https://www.home-assistant.io/) care monitorizează datele contractuale, consumul și facturile prin API-ul [MyElectrica România](https://myelectrica.ro/).
