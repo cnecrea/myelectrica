@@ -1,7 +1,118 @@
 {
   "repo": "",
   "prima_colectare": "",
-  "ultima_actualizare": "",
-  "zilnic": {},
-  "releases": {}
+  "ultima_actualizare": "2026-03-15T21:42:23Z",
+  "zilnic": {
+    "2026-03-01": {
+      "clones_total": 4,
+      "clones_unice": 3,
+      "views_total": 2,
+      "views_unice": 1
+    },
+    "2026-03-02": {
+      "clones_total": 3,
+      "clones_unice": 2,
+      "views_total": 1,
+      "views_unice": 1
+    },
+    "2026-03-03": {
+      "clones_total": 187,
+      "clones_unice": 78,
+      "views_total": 1,
+      "views_unice": 1
+    },
+    "2026-03-04": {
+      "clones_total": 19,
+      "clones_unice": 10,
+      "views_total": 6,
+      "views_unice": 3
+    },
+    "2026-03-05": {
+      "clones_total": 74,
+      "clones_unice": 28,
+      "views_total": 18,
+      "views_unice": 6
+    },
+    "2026-03-06": {
+      "clones_total": 10,
+      "clones_unice": 6,
+      "views_total": 4,
+      "views_unice": 3
+    },
+    "2026-03-07": {
+      "clones_total": 49,
+      "clones_unice": 23,
+      "views_total": 3,
+      "views_unice": 2
+    },
+    "2026-03-08": {
+      "clones_total": 12,
+      "clones_unice": 7,
+      "views_total": 3,
+      "views_unice": 3
+    },
+    "2026-03-09": {
+      "clones_total": 38,
+      "clones_unice": 18,
+      "views_total": 1,
+      "views_unice": 1
+    },
+    "2026-03-10": {
+      "clones_total": 13,
+      "clones_unice": 6,
+      "views_total": 0,
+      "views_unice": 0
+    },
+    "2026-03-11": {
+      "clones_total": 10,
+      "clones_unice": 4,
+      "views_total": 2,
+      "views_unice": 2
+    },
+    "2026-03-12": {
+      "clones_total": 11,
+      "clones_unice": 7,
+      "views_total": 1,
+      "views_unice": 1
+    },
+    "2026-03-13": {
+      "clones_total": 22,
+      "clones_unice": 11,
+      "views_total": 2,
+      "views_unice": 1
+    },
+    "2026-03-14": {
+      "clones_total": 37,
+      "clones_unice": 20,
+      "views_total": 1,
+      "views_unice": 1
+    },
+    "2026-03-15": {
+      "stars": 21,
+      "forks": 3,
+      "watchers": 1,
+      "open_issues": 0,
+      "referrers": [
+        {
+          "sursa": "Google",
+          "vizite": 11,
+          "vizitatori_unici": 6
+        },
+        {
+          "sursa": "github.com",
+          "vizite": 6,
+          "vizitatori_unici": 5
+        }
+      ]
+    }
+  },
+  "releases": {
+    "2.2.0": 1,
+    "2.1.0": 0,
+    "2.0.0": 3,
+    "1.2.1": 9,
+    "1.2.0": 4,
+    "1.1.0": 5,
+    "1.0.0": 39
+  }
 }
