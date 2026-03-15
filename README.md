@@ -13,8 +13,6 @@
 [![Commit-uri/lună](https://img.shields.io/github/commit-activity/m/cnecrea/myelectrica)](https://github.com/cnecrea/myelectrica/commits/main)
 [![Dimensiune Repo](https://img.shields.io/github/repo-size/cnecrea/myelectrica)](https://github.com/cnecrea/myelectrica)
 [![Limbaj Principal](https://img.shields.io/github/languages/top/cnecrea/myelectrica)](https://github.com/cnecrea/myelectrica)
-[![Total descărcări](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cnecrea/myelectrica/main/statistici/shields/descarcari.json)](https://github.com/cnecrea/myelectrica/releases)
-[![Descărcări ultima versiune](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cnecrea/myelectrica/main/statistici/shields/ultima_release.json)](https://github.com/cnecrea/myelectrica/releases/latest)
 ![Badge](https://hitscounter.dev/api/hit?url=https%3A%2F%2Fgithub.com%2Fcnecrea%2Fmyelectrica&label=afi%C8%99%C4%83ri&icon=github&color=%23198754&message=&style=flat&tz=Europe%2FBucharest)
 
 
