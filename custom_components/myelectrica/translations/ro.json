@@ -1,0 +1,115 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Conectează-te la MyElectrica",
+        "description": "Completează email-ul și parola contului tău MyElectrica. Sistemul va descoperi automat codurile de client și locurile de consum asociate.",
+        "data": {
+          "username": "Email",
+          "password": "Parolă",
+          "update_interval": "Interval actualizare (secunde)"
+        }
+      },
+      "select_nlc": {
+        "title": "Alege locurile de consum de monitorizat",
+        "description": "Poți monitoriza toate locurile de consum sau doar anumite dintre ele. Selectează ce dorești să urmărești.",
+        "data": {
+          "select_all": "Monitorizează toate locurile de consum",
+          "selected_nlcs": "Selectează locurile de consum dorite"
+        }
+      }
+    },
+    "error": {
+      "auth_failed": "Autentificare eșuată. Verifică email-ul și parola.",
+      "no_data": "Autentificare reușită, dar nu s-au găsit date asociate contului.",
+      "no_nlc_selected": "Trebuie să selectezi cel puțin un loc de consum sau să activezi opțiunea pentru toate."
+    },
+    "abort": {
+      "already_configured": "Acest cont MyElectrica este deja configurat."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Setări MyElectrica",
+        "description": "Selectează categoria de gestionat",
+        "menu_options": {
+          "settings": "Setări cont",
+          "licenta": "Licență"
+        }
+      },
+      "settings": {
+        "title": "Setări cont",
+        "description": "Actualizează credențialele și intervalul de actualizare.",
+        "data": {
+          "username": "Email",
+          "password": "Parolă",
+          "update_interval": "Interval actualizare (secunde)"
+        }
+      },
+      "licenta": {
+        "title": "Licență MyElectrica",
+        "description": "{license_status}\n\nIntrodu cheia de licență pentru a activa sau reînnoi integrarea.",
+        "data": {
+          "license_key": "Cheie de licență"
+        }
+      },
+      "select_nlc": {
+        "title": "Alege locurile de consum de monitorizat",
+        "description": "Modifică selecția locurilor de consum pe care vrei să le monitorizezi.",
+        "data": {
+          "select_all": "Monitorizează toate locurile de consum",
+          "selected_nlcs": "Selectează locurile de consum dorite"
+        }
+      }
+    },
+    "error": {
+      "auth_failed": "Autentificare eșuată. Verifică email-ul și parola.",
+      "no_data": "Autentificare reușită, dar nu s-au găsit date asociate contului.",
+      "no_nlc_selected": "Trebuie să selectezi cel puțin un loc de consum sau să activezi opțiunea pentru toate.",
+      "license_key_empty": "Introdu o cheie de licență.",
+      "license_key_invalid": "Cheie de licență invalidă. Verifică formatul și încearcă din nou.",
+      "license_already_used": "Această cheie de licență a fost deja folosită pe altă instalare.",
+      "license_key_expired": "Această cheie de licență a expirat.",
+      "license_fingerprint_mismatch": "Această cheie de licență este asociată altei instalări.",
+      "license_network_error": "Nu se poate conecta la serverul de licențe. Verifică conexiunea la internet.",
+      "license_server_error": "Eroare server licențe. Încearcă din nou mai târziu."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "date_contract": {
+        "name": "Date contract"
+      },
+      "date_client": {
+        "name": "Date client"
+      },
+      "index_curent": {
+        "name": "Index curent"
+      },
+      "istoric_citiri": {
+        "name": "Istoric citiri"
+      },
+      "citire_permisa": {
+        "name": "Citire permisă"
+      },
+      "conventie_consum": {
+        "name": "Convenție consum"
+      },
+      "arhivafacturi": {
+        "name": "Arhivă facturi"
+      },
+      "factura_restanta": {
+        "name": "Factură restantă"
+      },
+      "arhiva_plati": {
+        "name": "Arhivă plăți"
+      }
+    },
+    "button": {
+      "trimite_index": {
+        "name": "Trimite index"
+      }
+    }
+  }
+}
