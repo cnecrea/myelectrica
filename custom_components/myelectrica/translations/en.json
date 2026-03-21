@@ -1,0 +1,115 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to MyElectrica",
+        "description": "Enter your MyElectrica email and password.",
+        "data": {
+          "username": "Email",
+          "password": "Password",
+          "update_interval": "Update interval (seconds)"
+        }
+      },
+      "select_nlc": {
+        "title": "Select consumption locations to monitor",
+        "description": "You can monitor all consumption locations or only specific ones. Select what you want to track.",
+        "data": {
+          "select_all": "Monitor all consumption locations",
+          "selected_nlcs": "Select desired consumption locations"
+        }
+      }
+    },
+    "error": {
+      "auth_failed": "Authentication failed. Check your email and password.",
+      "no_data": "Authentication successful, but no data found for this account.",
+      "no_nlc_selected": "You must select at least one consumption location or enable the option for all."
+    },
+    "abort": {
+      "already_configured": "This MyElectrica account is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "MyElectrica Settings",
+        "description": "Select the category to manage",
+        "menu_options": {
+          "settings": "Account Settings",
+          "licenta": "License"
+        }
+      },
+      "settings": {
+        "title": "Account Settings",
+        "description": "Update your credentials and refresh interval.",
+        "data": {
+          "username": "Email",
+          "password": "Password",
+          "update_interval": "Update interval (seconds)"
+        }
+      },
+      "licenta": {
+        "title": "MyElectrica License",
+        "description": "{license_status}\n\nEnter your license key to activate or renew the integration.",
+        "data": {
+          "license_key": "License Key"
+        }
+      },
+      "select_nlc": {
+        "title": "Select consumption locations to monitor",
+        "description": "Update the consumption locations you want to monitor.",
+        "data": {
+          "select_all": "Monitor all consumption locations",
+          "selected_nlcs": "Select desired consumption locations"
+        }
+      }
+    },
+    "error": {
+      "auth_failed": "Authentication failed. Check your email and password.",
+      "no_data": "Authentication successful, but no data found for this account.",
+      "no_nlc_selected": "You must select at least one consumption location or enable the option for all.",
+      "license_key_empty": "Please enter a license key.",
+      "license_key_invalid": "Invalid license key. Check the format and try again.",
+      "license_already_used": "This license key has already been used on another installation.",
+      "license_key_expired": "This license key has expired.",
+      "license_fingerprint_mismatch": "This license key is bound to a different installation.",
+      "license_network_error": "Cannot connect to the license server. Check your internet connection.",
+      "license_server_error": "License server error. Please try again later."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "date_contract": {
+        "name": "Date contract"
+      },
+      "date_client": {
+        "name": "Date client"
+      },
+      "index_curent": {
+        "name": "Index curent"
+      },
+      "istoric_citiri": {
+        "name": "Istoric citiri"
+      },
+      "citire_permisa": {
+        "name": "Citire permisă"
+      },
+      "conventie_consum": {
+        "name": "Convenție consum"
+      },
+      "arhivafacturi": {
+        "name": "Arhivă facturi"
+      },
+      "factura_restanta": {
+        "name": "Factură restantă"
+      },
+      "arhiva_plati": {
+        "name": "Arhivă plăți"
+      }
+    },
+    "button": {
+      "trimite_index": {
+        "name": "Trimite index"
+      }
+    }
+  }
+}
