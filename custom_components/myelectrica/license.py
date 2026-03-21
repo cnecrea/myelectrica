@@ -25,6 +25,7 @@ from typing import Any
 
 import aiohttp
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
@@ -53,11 +54,16 @@ INTEGRATION = "myelectrica"
 # Cheia privată corespunzătoare rămâne DOAR pe server.
 # Această cheie publică permite doar VERIFICAREA semnăturilor,
 # nu și crearea lor — deci e sigură să fie în cod.
-SERVER_PUBLIC_KEY_PEM = """\
+SERVER_PUBLIC_KEYS_PEM: list[str] = [
+    """\
 -----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAUAZIZ1fw+b7qpq9LA47NRbHYhN8kONMxUiJyx5RHrBg=
 -----END PUBLIC KEY-----
-"""
+""",
+]
+
+# Backward compatibility alias (cod existent poate referi forma singulară)
+SERVER_PUBLIC_KEY_PEM = SERVER_PUBLIC_KEYS_PEM[0]
 
 
 # ─────────────────────────────────────────────
@@ -91,6 +97,11 @@ class LicenseManager:
         self._loaded = False
         # Token de status primit de la server (cache local)
         self._status_token: dict[str, Any] = {}
+
+    @property
+    def _session(self) -> aiohttp.ClientSession:
+        """Returnează sesiunea HTTP partajată din Home Assistant."""
+        return async_get_clientsession(self._hass)
 
     # ─── Încărcare / Salvare ───
 
@@ -221,62 +232,71 @@ class LicenseManager:
         payload["hmac"] = self._compute_request_hmac(payload)
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{LICENSE_API_URL}/check",
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=30),
-                    headers={
-                        "Content-Type": "application/json",
-                        "User-Agent": "MyElectrica-HA-Integration/3.0",
-                    },
-                ) as resp:
-                    _LOGGER.debug(
-                        "[MyElectrica:License] Server /check răspuns: HTTP %d",
-                        resp.status,
-                    )
-                    result = await resp.json()
+            session = self._session
+            async with session.post(
+                f"{LICENSE_API_URL}/check",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=30),
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "MyElectrica-HA-Integration/3.0",
+                },
+            ) as resp:
+                _LOGGER.debug(
+                    "[MyElectrica:License] Server /check răspuns: HTTP %d",
+                    resp.status,
+                )
+                result = await resp.json()
 
-                    if resp.status == 200 and "status" in result:
-                        # Verifică semnătura serverului pe token
-                        if not self._verify_token_signature(result):
-                            _LOGGER.warning(
-                                "[MyElectrica:License] Semnătura token-ului de status "
-                                "e invalidă — ignor răspunsul"
-                            )
-                            return self._status_token
-
-                        # Salvează noul status token
-                        self._status_token = result
-                        self._data["status_token"] = result
-                        self._data["last_server_check"] = time.time()
-
-                        # Sincronizează license_key din răspunsul serverului
-                        # (important: serverul e sursa de adevăr pentru cheie)
-                        server_key = result.get("license_key")
-                        if server_key and self._data.get("license_key") != server_key:
-                            self._data["license_key"] = server_key
-                            _LOGGER.debug(
-                                "[MyElectrica:License] license_key sincronizat "
-                                "din răspunsul /check: %s",
-                                server_key,
-                            )
-
-                        await self._async_save()
-
-                        _LOGGER.debug(
-                            "[MyElectrica:License] Status actualizat de la server — %s "
-                            "(valid_until: %s)",
-                            result.get("status"),
-                            result.get("valid_until"),
+                if resp.status == 200 and "status" in result:
+                    # Verifică semnătura serverului pe token
+                    if not self._verify_token_signature(result):
+                        _LOGGER.warning(
+                            "[MyElectrica:License] Semnătura token-ului de status "
+                            "e invalidă — ignor răspunsul"
                         )
-                        return result
+                        return self._status_token
 
-                    _LOGGER.warning(
-                        "[MyElectrica:License] răspuns invalid de la /check — %s",
-                        result,
+                    # Salvează noul status token
+                    self._status_token = result
+                    self._data["status_token"] = result
+                    self._data["last_server_check"] = time.time()
+
+                    # Sincronizează license_key din răspunsul serverului
+                    # (important: serverul e sursa de adevăr pentru cheie)
+                    server_key = result.get("license_key")
+                    if server_key and self._data.get("license_key") != server_key:
+                        self._data["license_key"] = server_key
+                        _LOGGER.debug(
+                            "[MyElectrica:License] license_key sincronizat "
+                            "din răspunsul /check: %s",
+                            server_key,
+                        )
+
+                    # Extrage client_secret (v3.1 — HMAC cu secret)
+                    client_secret = result.get("client_secret")
+                    if client_secret and self._data.get("client_secret") != client_secret:
+                        self._data["client_secret"] = client_secret
+                        _LOGGER.debug(
+                            "[MyElectrica:License] client_secret sincronizat "
+                            "din răspunsul /check"
+                        )
+
+                    await self._async_save()
+
+                    _LOGGER.debug(
+                        "[MyElectrica:License] Status actualizat de la server — %s "
+                        "(valid_until: %s)",
+                        result.get("status"),
+                        result.get("valid_until"),
                     )
-                    return self._status_token
+                    return result
+
+                _LOGGER.warning(
+                    "[MyElectrica:License] răspuns invalid de la /check — %s",
+                    result,
+                )
+                return self._status_token
 
         except aiohttp.ClientError as err:
             _LOGGER.error(
@@ -509,36 +529,36 @@ class LicenseManager:
         payload["hmac"] = self._compute_request_hmac(payload)
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{LICENSE_API_URL}/validate",
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=30),
-                    headers={
-                        "Content-Type": "application/json",
-                        "User-Agent": "MyElectrica-HA-Integration/3.0",
-                    },
-                ) as resp:
-                    result = await resp.json()
+            session = self._session
+            async with session.post(
+                f"{LICENSE_API_URL}/validate",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=30),
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "MyElectrica-HA-Integration/3.0",
+                },
+            ) as resp:
+                result = await resp.json()
 
-                    if resp.status == 200 and result.get("valid"):
-                        self._data["last_validation"] = time.time()
+                if resp.status == 200 and result.get("valid"):
+                    self._data["last_validation"] = time.time()
 
-                        # Dacă serverul trimite un token reînnoit
-                        new_token = result.get("token")
-                        if new_token and self._verify_token_signature(
-                            new_token
-                        ):
-                            self._data["activation_token"] = new_token
+                    # Dacă serverul trimite un token reînnoit
+                    new_token = result.get("token")
+                    if new_token and self._verify_token_signature(
+                        new_token
+                    ):
+                        self._data["activation_token"] = new_token
 
-                        await self._async_save()
-                        return True
+                    await self._async_save()
+                    return True
 
-                    _LOGGER.warning(
-                        "[MyElectrica:License] heartbeat respins — %s",
-                        result.get("error", "necunoscut"),
-                    )
-                    return False
+                _LOGGER.warning(
+                    "[MyElectrica:License] heartbeat respins — %s",
+                    result.get("error", "necunoscut"),
+                )
+                return False
 
         except Exception:  # noqa: BLE001
             _LOGGER.debug("[MyElectrica:License] heartbeat eșuat (rețea indisponibilă)")
@@ -566,94 +586,94 @@ class LicenseManager:
         payload["hmac"] = self._compute_request_hmac(payload)
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{LICENSE_API_URL}/activate",
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=30),
-                    headers={
-                        "Content-Type": "application/json",
-                        "User-Agent": "MyElectrica-HA-Integration/3.0",
-                    },
-                ) as resp:
-                    _LOGGER.debug(
-                        "[MyElectrica:License] /activate răspuns: HTTP %d",
-                        resp.status,
-                    )
+            session = self._session
+            async with session.post(
+                f"{LICENSE_API_URL}/activate",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=30),
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "MyElectrica-HA-Integration/3.0",
+                },
+            ) as resp:
+                _LOGGER.debug(
+                    "[MyElectrica:License] /activate răspuns: HTTP %d",
+                    resp.status,
+                )
 
-                    # Serverul a returnat eroare HTTP (500, 422, etc.)
-                    if resp.status != 200:
-                        try:
-                            body = await resp.text()
-                        except Exception:  # noqa: BLE001
-                            body = "(nu s-a putut citi)"
-                        _LOGGER.warning(
-                            "[MyElectrica:License] activare eșuată — "
-                            "HTTP %d: %s",
-                            resp.status,
-                            body[:500],
-                        )
+                # Serverul a returnat eroare HTTP (500, 422, etc.)
+                if resp.status != 200:
+                    try:
+                        body = await resp.text()
+                    except Exception:  # noqa: BLE001
+                        body = "(nu s-a putut citi)"
+                    _LOGGER.warning(
+                        "[MyElectrica:License] activare eșuată — "
+                        "HTTP %d: %s",
+                        resp.status,
+                        body[:500],
+                    )
+                    return {
+                        "success": False,
+                        "error": f"http_{resp.status}",
+                    }
+
+                result = await resp.json()
+
+                if result.get("success"):
+                    token = result.get("token", {})
+
+                    # Verifică semnătura serverului
+                    if not self._verify_token_signature(token):
                         return {
                             "success": False,
-                            "error": f"http_{resp.status}",
+                            "error": "invalid_signature",
                         }
 
-                    result = await resp.json()
+                    # Verifică că token-ul e pentru noi
+                    if token.get("fingerprint") != self._fingerprint:
+                        return {
+                            "success": False,
+                            "error": "fingerprint_mismatch",
+                        }
 
-                    if result.get("success"):
-                        token = result.get("token", {})
-
-                        # Verifică semnătura serverului
-                        if not self._verify_token_signature(token):
-                            return {
-                                "success": False,
-                                "error": "invalid_signature",
-                            }
-
-                        # Verifică că token-ul e pentru noi
-                        if token.get("fingerprint") != self._fingerprint:
-                            return {
-                                "success": False,
-                                "error": "fingerprint_mismatch",
-                            }
-
-                        # Salvează token-ul
-                        self._data["activation_token"] = token
-                        self._data["license_key"] = (
-                            license_key.strip().upper()
-                        )
-                        self._data["last_validation"] = time.time()
-                        self._data["activated_at"] = token.get(
-                            "activated_at"
-                        )
-                        await self._async_save()
-
-                        # Invalidează cache-ul de status vechi (trial)
-                        # ca async_check_status() să facă request fresh
-                        self._status_token = {}
-                        self._data.pop("status_token", None)
-
-                        # Actualizează status-ul de la server (acum va fi 'licensed')
-                        await self.async_check_status()
-
-                        _LOGGER.info(
-                            "[MyElectrica:License] licență activată cu succes (%s)",
-                            token.get("license_type", "necunoscut"),
-                        )
-
-                        # Auto-reload: reîncarcă toate entry-urile myelectrica
-                        # ca senzorii să se recreeze cu licență validă
-                        await self._async_reload_entries()
-
-                        return {"success": True}
-
-                    error = result.get("error", "unknown")
-                    _LOGGER.warning(
-                        "[MyElectrica:License] activare eșuată — %s (răspuns: %s)",
-                        error,
-                        result,
+                    # Salvează token-ul
+                    self._data["activation_token"] = token
+                    self._data["license_key"] = (
+                        license_key.strip().upper()
                     )
-                    return {"success": False, "error": error}
+                    self._data["last_validation"] = time.time()
+                    self._data["activated_at"] = token.get(
+                        "activated_at"
+                    )
+                    await self._async_save()
+
+                    # Invalidează cache-ul de status vechi (trial)
+                    # ca async_check_status() să facă request fresh
+                    self._status_token = {}
+                    self._data.pop("status_token", None)
+
+                    # Actualizează status-ul de la server (acum va fi 'licensed')
+                    await self.async_check_status()
+
+                    _LOGGER.info(
+                        "[MyElectrica:License] licență activată cu succes (%s)",
+                        token.get("license_type", "necunoscut"),
+                    )
+
+                    # Auto-reload: reîncarcă toate entry-urile myelectrica
+                    # ca senzorii să se recreeze cu licență validă
+                    await self._async_reload_entries()
+
+                    return {"success": True}
+
+                error = result.get("error", "unknown")
+                _LOGGER.warning(
+                    "[MyElectrica:License] activare eșuată — %s (răspuns: %s)",
+                    error,
+                    result,
+                )
+                return {"success": False, "error": error}
 
         except aiohttp.ClientError as err:
             _LOGGER.error(
@@ -687,46 +707,46 @@ class LicenseManager:
         payload["hmac"] = self._compute_request_hmac(payload)
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{LICENSE_API_URL}/deactivate",
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=30),
-                    headers={
-                        "Content-Type": "application/json",
-                        "User-Agent": "MyElectrica-HA-Integration/3.0",
-                    },
-                ) as resp:
-                    result = await resp.json()
+            session = self._session
+            async with session.post(
+                f"{LICENSE_API_URL}/deactivate",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=30),
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "MyElectrica-HA-Integration/3.0",
+                },
+            ) as resp:
+                result = await resp.json()
 
-                    if resp.status == 200 and result.get("success"):
-                        # Șterge token-ul local
-                        self._data.pop("activation_token", None)
-                        self._data.pop("license_key", None)
-                        self._data.pop("last_validation", None)
-                        self._data.pop("activated_at", None)
-                        await self._async_save()
+                if resp.status == 200 and result.get("success"):
+                    # Șterge token-ul local
+                    self._data.pop("activation_token", None)
+                    self._data.pop("license_key", None)
+                    self._data.pop("last_validation", None)
+                    self._data.pop("activated_at", None)
+                    await self._async_save()
 
-                        # Invalidează cache-ul de status vechi (licensed)
-                        self._status_token = {}
-                        self._data.pop("status_token", None)
+                    # Invalidează cache-ul de status vechi (licensed)
+                    self._status_token = {}
+                    self._data.pop("status_token", None)
 
-                        # Actualizează status-ul de la server
-                        await self.async_check_status()
+                    # Actualizează status-ul de la server
+                    await self.async_check_status()
 
-                        _LOGGER.info(
-                            "[MyElectrica:License] licență dezactivată cu succes"
-                        )
+                    _LOGGER.info(
+                        "[MyElectrica:License] licență dezactivată cu succes"
+                    )
 
-                        # Auto-reload: reîncarcă entry-urile
-                        await self._async_reload_entries()
+                    # Auto-reload: reîncarcă entry-urile
+                    await self._async_reload_entries()
 
-                        return {"success": True}
+                    return {"success": True}
 
-                    return {
-                        "success": False,
-                        "error": result.get("error", "server_error"),
-                    }
+                return {
+                    "success": False,
+                    "error": result.get("error", "server_error"),
+                }
 
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("[MyElectrica:License] eroare la dezactivare — %s", err)
@@ -751,28 +771,28 @@ class LicenseManager:
         payload["hmac"] = self._compute_request_hmac(payload)
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{LICENSE_API_URL}/notify",
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                    headers={
-                        "Content-Type": "application/json",
-                        "User-Agent": "MyElectrica-HA-Integration/3.0",
-                    },
-                ) as resp:
-                    if resp.status == 200:
-                        result = await resp.json()
-                        if not result.get("success"):
-                            _LOGGER.warning(
-                                "[MyElectrica:License] Server a refuzat '%s': %s",
-                                action, result.get("error"),
-                            )
-                    else:
+            session = self._session
+            async with session.post(
+                f"{LICENSE_API_URL}/notify",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=10),
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "MyElectrica-HA-Integration/3.0",
+                },
+            ) as resp:
+                if resp.status == 200:
+                    result = await resp.json()
+                    if not result.get("success"):
                         _LOGGER.warning(
-                            "[MyElectrica:License] Notify HTTP %d pentru '%s'",
-                            resp.status, action,
+                            "[MyElectrica:License] Server a refuzat '%s': %s",
+                            action, result.get("error"),
                         )
+                else:
+                    _LOGGER.warning(
+                        "[MyElectrica:License] Notify HTTP %d pentru '%s'",
+                        resp.status, action,
+                    )
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug(
                 "[MyElectrica:License] Nu s-a putut raporta '%s': %s",
@@ -807,6 +827,7 @@ class LicenseManager:
 
         Token-ul conține diverse câmpuri + 'signature'.
         Semnătura e calculată pe JSON-ul celorlalte câmpuri (sort_keys).
+        Încearcă toate cheile publice din SERVER_PUBLIC_KEYS_PEM (SEC-03 key rotation).
         """
         try:
             from cryptography.hazmat.primitives.asymmetric.ed25519 import (
@@ -824,19 +845,24 @@ class LicenseManager:
 
             # Reconstituie datele semnate (fără câmpul signature)
             signed_data = {
-                k: v for k, v in token.items() if k != "signature"
+                k: v for k, v in token.items()
+                if k != "signature"
             }
             message = json.dumps(signed_data, sort_keys=True).encode()
 
-            public_key = load_pem_public_key(
-                SERVER_PUBLIC_KEY_PEM.encode()
-            )
-            if not isinstance(public_key, Ed25519PublicKey):
-                _LOGGER.error("[MyElectrica:License] cheia publică nu e Ed25519")
-                return False
+            # Încearcă fiecare cheie publică (key rotation)
+            for pem in SERVER_PUBLIC_KEYS_PEM:
+                try:
+                    public_key = load_pem_public_key(pem.encode())
+                    if not isinstance(public_key, Ed25519PublicKey):
+                        continue
+                    public_key.verify(signature, message)
+                    return True
+                except Exception:  # noqa: BLE001
+                    continue
 
-            public_key.verify(signature, message)
-            return True
+            _LOGGER.debug("[MyElectrica:License] nicio cheie publică nu a validat semnătura")
+            return False
 
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug(
@@ -847,13 +873,14 @@ class LicenseManager:
     def _compute_request_hmac(self, payload: dict[str, Any]) -> str:
         """Calculează HMAC-SHA256 pentru integritatea request-ului.
 
-        Cheia HMAC = fingerprint (unic per instalare).
+        Cheia HMAC = client_secret (v3.1) cu fallback pe fingerprint.
         Mesajul = JSON al payload-ului fără câmpul 'hmac'.
         """
+        hmac_key = self._data.get("client_secret") or self._fingerprint
         data = {k: v for k, v in payload.items() if k != "hmac"}
         msg = json.dumps(data, sort_keys=True).encode()
         return hmac_lib.new(
-            self._fingerprint.encode(),
+            hmac_key.encode(),
             msg,
             hashlib.sha256,
         ).hexdigest()

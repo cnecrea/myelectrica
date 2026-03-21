@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import logging
 
+import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import DOMAIN, LICENSE_DATA_KEY
 from .coordinator import MyElectricaCoordinator
@@ -129,11 +131,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: MyElectricaConfigEntry)
         hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
         _LOGGER.debug("[MyElectrica] Entry %s eliminat din hass.data", entry.entry_id)
 
-        # Verifică dacă mai sunt entry-uri active (ignoră cheile interne)
-        chei_interne = {LICENSE_DATA_KEY, "_cancel_heartbeat"}
+        # Verifică dacă mai sunt entry-uri active
         entry_ids_ramase = {
-            k for k in hass.data.get(DOMAIN, {})
-            if k not in chei_interne
+            e.entry_id
+            for e in hass.config_entries.async_entries(DOMAIN)
+            if e.entry_id != entry.entry_id
         }
 
         _LOGGER.debug(
@@ -196,6 +198,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         notify_data = hass.data.pop(f"{DOMAIN}_notify", None)
         if notify_data and notify_data.get("fingerprint"):
             await _send_lifecycle_event(
+                hass,
                 notify_data["fingerprint"],
                 notify_data.get("license_key", ""),
                 "integration_removed",
@@ -203,7 +206,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 
 async def _send_lifecycle_event(
-    fingerprint: str, license_key: str, action: str
+    hass: HomeAssistant, fingerprint: str, license_key: str, action: str
 ) -> None:
     """Trimite un eveniment lifecycle direct (fără LicenseManager).
 
@@ -213,8 +216,6 @@ async def _send_lifecycle_event(
     import hmac as hmac_lib
     import json
     import time
-
-    import aiohttp
 
     from .license import INTEGRATION, LICENSE_API_URL
 
@@ -233,22 +234,22 @@ async def _send_lifecycle_event(
     ).hexdigest()
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{LICENSE_API_URL}/notify",
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=10),
-                headers={
-                    "Content-Type": "application/json",
-                    "User-Agent": "MyElectrica-HA-Integration/3.0",
-                },
-            ) as resp:
-                if resp.status == 200:
-                    result = await resp.json()
-                    if not result.get("success"):
-                        _LOGGER.warning(
-                            "[MyElectrica] Server a refuzat '%s': %s",
-                            action, result.get("error"),
-                        )
+        session = async_get_clientsession(hass)
+        async with session.post(
+            f"{LICENSE_API_URL}/notify",
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=10),
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "MyElectrica-HA-Integration/3.0",
+            },
+        ) as resp:
+            if resp.status == 200:
+                result = await resp.json()
+                if not result.get("success"):
+                    _LOGGER.warning(
+                        "[MyElectrica] Server a refuzat '%s': %s",
+                        action, result.get("error"),
+                    )
     except Exception as err:  # noqa: BLE001
         _LOGGER.debug("[MyElectrica] Nu s-a putut raporta '%s': %s", action, err)

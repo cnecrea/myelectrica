@@ -25,7 +25,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import ATTRIBUTION, DOMAIN, MONTHS_NUM_RO
+from .const import ATTRIBUTION, DOMAIN, LICENSE_DATA_KEY, MONTHS_NUM_RO
 from .coordinator import MyElectricaCoordinator
 from .helper import (
     build_address,
@@ -159,6 +159,12 @@ class MyElectricaEntity(
         self._ctx = ctx
 
     @property
+    def _license_valid(self) -> bool:
+        """Verifică dacă licența este validă."""
+        mgr = self.hass.data.get(DOMAIN, {}).get(LICENSE_DATA_KEY)
+        return mgr is not None and mgr.is_valid
+
+    @property
     def entity_id(self) -> str | None:
         """Returnează ID-ul entității."""
         return self._custom_entity_id
@@ -228,6 +234,8 @@ class ContractNlcSensor(MyElectricaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         response = self._get_nlc_response("contract_details")
         if not response:
             return None
@@ -236,6 +244,8 @@ class ContractNlcSensor(MyElectricaEntity):
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         response = self._get_nlc_response("contract_details")
         if not response:
             return {"attribution": ATTRIBUTION}
@@ -296,6 +306,8 @@ class ClientDataSensor(MyElectricaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         response = self._get_client_response("client_data")
         if not response:
             return (self._ctx.client_name or "Necunoscut").title()
@@ -303,6 +315,8 @@ class ClientDataSensor(MyElectricaEntity):
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         response = self._get_client_response("client_data")
         if not response:
             return {"attribution": ATTRIBUTION}
@@ -354,6 +368,8 @@ class IndexCurentSensor(MyElectricaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         _, _, cadran = self._get_meter_data()
         if cadran is None:
             return None
@@ -361,6 +377,8 @@ class IndexCurentSensor(MyElectricaEntity):
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         response, contor, cadran = self._get_meter_data()
         if contor is None or cadran is None:
             return {"attribution": ATTRIBUTION}
@@ -442,10 +460,14 @@ class IstoricCitiriSensor(MyElectricaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         return len(self._get_recent_readings())
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         recent = self._get_recent_readings()
         if not recent:
             return {"attribution": ATTRIBUTION}
@@ -508,6 +530,8 @@ class CitirePermisaSensor(MyElectricaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         response = self._get_pac_data()
         if not response:
             return "Nu"
@@ -515,6 +539,8 @@ class CitirePermisaSensor(MyElectricaEntity):
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         response = self._get_pac_data()
         if not response:
             return {"attribution": ATTRIBUTION}
@@ -555,16 +581,20 @@ class ConventieConsumSensor(MyElectricaEntity):
     @property
     def native_value(self):
         """Indică dacă există consum în convenție."""
+        if not self._license_valid:
+            return "Licență necesară"
         items = self._get_convention()
         if not items:
             return "Nu"
-    
+
         total = sum(safe_float(item.get("Quantity")) for item in items)
-    
+
         return "Da" if total > 0 else "Nu"
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         items = self._get_convention()
         if not items:
             return {"attribution": ATTRIBUTION}
@@ -618,10 +648,14 @@ class ArhivaFacturiSensor(MyElectricaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         return len(self._get_recent_invoices())
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         recent = self._get_recent_invoices()
         if not recent:
             return {"attribution": ATTRIBUTION}
@@ -679,12 +713,16 @@ class FacturaRestantaSensor(MyElectricaEntity):
     @property
     def native_value(self):
         """Există factură restantă? Da/Nu."""
+        if not self._license_valid:
+            return "Licență necesară"
         neachitate = self._facturi_neachitate()
         return "Da" if neachitate else "Nu"
 
     @property
     def extra_state_attributes(self):
         """Detalii facturi neachitate și total."""
+        if not self._license_valid:
+            return {"licență": "necesară"}
         neachitate = self._facturi_neachitate()
         today = dt_util.now().date()
         attrs = {}
@@ -808,10 +846,14 @@ class ArhivaPlatiSensor(MyElectricaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         return len(self._get_recent_payments())
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         recent = self._get_recent_payments()
         if not recent:
             return {
