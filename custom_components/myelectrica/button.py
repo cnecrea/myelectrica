@@ -16,7 +16,7 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import ATTRIBUTION, DOMAIN
+from .const import ATTRIBUTION, DOMAIN, LICENSE_DATA_KEY
 from .coordinator import MyElectricaCoordinator
 from .helper import build_address, get_body_response
 from .sensor import NlcContext
@@ -39,6 +39,12 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Configurează butoanele de trimitere index pe baza ierarhiei."""
+    # Verifică dacă licența este validă
+    mgr = hass.data.get(DOMAIN, {}).get(LICENSE_DATA_KEY)
+    if mgr is None or not mgr.is_valid:
+        _LOGGER.warning("[MyElectrica] Butoane dezactivate — licență invalidă")
+        return
+
     coordinator: MyElectricaCoordinator = config_entry.runtime_data
 
     if not coordinator.data:

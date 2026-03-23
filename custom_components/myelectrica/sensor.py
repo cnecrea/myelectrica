@@ -20,6 +20,7 @@ from datetime import datetime
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -44,6 +45,12 @@ _LOGGER = logging.getLogger(__name__)
 # ── async_setup_entry ────────────────────────────
 
 
+def _is_license_valid(hass: HomeAssistant) -> bool:
+    """Verifică dacă licența este validă."""
+    mgr = hass.data.get(DOMAIN, {}).get(LICENSE_DATA_KEY)
+    return mgr is not None and mgr.is_valid
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -61,6 +68,25 @@ async def async_setup_entry(
 
     # NLC-urile selectate de utilizator (dacă există)
     selected_nlcs = config_entry.data.get("selected_nlcs")
+
+    # Verifică dacă licența este validă
+    license_valid = _is_license_valid(hass)
+
+    # Curăță entitățile orfane la tranziție licență
+    if not license_valid:
+        registru = er.async_get(hass)
+        for entry_reg in er.async_entries_for_config_entry(
+            registru, config_entry.entry_id
+        ):
+            if (
+                entry_reg.domain == "sensor"
+                and "_licenta_necesara" not in entry_reg.unique_id
+            ):
+                registru.async_remove(entry_reg.entity_id)
+                _LOGGER.debug(
+                    "[MyElectrica] Senzor orfan eliminat (licență expirată): %s",
+                    entry_reg.entity_id,
+                )
 
     # Iterăm ierarhia: client → contract → NLC
     for client in hierarchy:
@@ -89,17 +115,35 @@ async def async_setup_entry(
                     address=address,
                 )
 
-                sensors.extend([
-                    ContractNlcSensor(coordinator, config_entry, ctx),
-                    ClientDataSensor(coordinator, config_entry, ctx),
-                    IndexCurentSensor(coordinator, config_entry, ctx),
-                    IstoricCitiriSensor(coordinator, config_entry, ctx),
-                    CitirePermisaSensor(coordinator, config_entry, ctx),
-                    ConventieConsumSensor(coordinator, config_entry, ctx),
-                    ArhivaFacturiSensor(coordinator, config_entry, ctx),
-                    FacturaRestantaSensor(coordinator, config_entry, ctx),
-                    ArhivaPlatiSensor(coordinator, config_entry, ctx),
-                ])
+                # Dacă licența nu este validă, adaugă doar LicentaNecesaraSensor
+                if not license_valid:
+                    sensors.append(LicentaNecesaraSensor(coordinator, config_entry, ctx))
+                else:
+                    # Curăță senzorul de licență orfan (dacă exista anterior)
+                    registru = er.async_get(hass)
+                    licenta_uid = f"{DOMAIN}_{ctx.nlc}_licenta_necesara"
+                    entitate_licenta = registru.async_get_entity_id(
+                        "sensor", DOMAIN, licenta_uid
+                    )
+                    if entitate_licenta is not None:
+                        registru.async_remove(entitate_licenta)
+                        _LOGGER.debug(
+                            "[MyElectrica] Entitate LicentaNecesaraSensor orfană "
+                            "eliminată: %s",
+                            entitate_licenta,
+                        )
+
+                    sensors.extend([
+                        ContractNlcSensor(coordinator, config_entry, ctx),
+                        ClientDataSensor(coordinator, config_entry, ctx),
+                        IndexCurentSensor(coordinator, config_entry, ctx),
+                        IstoricCitiriSensor(coordinator, config_entry, ctx),
+                        CitirePermisaSensor(coordinator, config_entry, ctx),
+                        ConventieConsumSensor(coordinator, config_entry, ctx),
+                        ArhivaFacturiSensor(coordinator, config_entry, ctx),
+                        FacturaRestantaSensor(coordinator, config_entry, ctx),
+                        ArhivaPlatiSensor(coordinator, config_entry, ctx),
+                    ])
 
     _LOGGER.debug(
         "[MyElectrica] Se adaugă %s senzori (entry_id=%s)",
@@ -216,6 +260,35 @@ class MyElectricaEntity(
                     if loc.get("IdLocConsum") == self._ctx.nlc:
                         return loc
         return None
+
+
+# ── Licență Necesară Sensor ────────────────────
+
+class LicentaNecesaraSensor(MyElectricaEntity):
+    """Senzor care arată "Licență necesară" când licența nu este validă."""
+
+    _attr_icon = "mdi:license"
+    _attr_translation_key = "licenta_necesara"
+
+    def __init__(self, coordinator, config_entry, ctx: NlcContext) -> None:
+        super().__init__(coordinator, config_entry, ctx)
+        self._attr_name = "MyElectrica"
+        self._attr_unique_id = f"{DOMAIN}_{ctx.nlc}_licenta_necesara"
+        self._custom_entity_id = f"sensor.{DOMAIN}_{ctx.nlc}_licenta_necesara"
+
+    @property
+    def native_value(self):
+        """Returnează mereu "Licență necesară"."""
+        return "Licență necesară"
+
+    @property
+    def extra_state_attributes(self):
+        """Afișează detalii despre licență și cum se activează."""
+        return {
+            "status": "Licență necesară",
+            "info": "Pentru a activa senzorii, este necesară o licență validă. Vizitați https://hubinteligent.org pentru mai multe detalii.",
+            "attribution": ATTRIBUTION,
+        }
 
 
 # ── 1. ContractNlcSensor (3.3) ──────────────────
