@@ -117,6 +117,14 @@ Numerele depind de câte NLC-uri ai selectat: 3 NLC × 9 senzori = 27 senzori, 3
 
 Dacă senzorul „Citire permisă" afișează „Nu" în afara perioadei de autocitire — e corect. PACIndicator devine „1" doar în perioada activă.
 
+### Licență — heartbeat
+
+```
+[LICENSE] Heartbeat OK. Licența este validă (expiră: 2027-01-15).
+```
+
+**Cauza**: verificarea periodică a licenței cu serverul a reușit. Comportament normal.
+
 ---
 
 ## 6. Situații de eroare
@@ -182,6 +190,20 @@ Dacă senzorul „Citire permisă" afișează „Nu" în afara perioadei de auto
 1. Datele contorului nu sunt disponibile (meter_list gol)
 2. `input_number` nu există sau are valoare `unknown`/`unavailable`
 3. API-ul a respins cererea (index invalid, perioadă închisă)
+
+### Licență invalidă
+
+```
+[LICENSE] Licența nu este validă. Motiv: expired / invalid_key / server_unreachable.
+[MyElectrica] Licență invalidă — se creează doar LicentaNecesaraSensor.
+```
+
+**Cauza**: licența a expirat, cheia este greșită, sau serverul de licențe nu este accesibil.
+
+**Rezolvare**:
+1. Verifică cheia de licență în OptionsFlow
+2. Dacă a expirat, reînnoiește de la [hubinteligent.org/licenta/myelectrica](https://hubinteligent.org/licenta/myelectrica)
+3. Dacă serverul nu e accesibil, există un grace period — licența rămâne validă temporar
 
 ---
 

@@ -24,7 +24,8 @@ Oferă senzori dedicați per loc de consum (NLC) pentru contract, index curent, 
 - **Autocitire** — senzor care indică dacă perioada de autocitire e activă + buton de trimitere index
 - **Adrese normalizate** — formatare corectă din ALL CAPS (API) în format românesc (`Furcilor 90A, ap. 17, 510128 Alba Iulia, Alba`)
 - **Mapping județe** — coduri scurte (AB, BV, CJ) convertite automat în denumiri complete (Alba, Brașov, Cluj)
-- **Reconfigurare fără reinstalare** — OptionsFlow pentru modificarea credențialelor și selecției NLC
+- **Sistem de licență** — fără licență validă se afișează doar senzorul „Licență necesară"
+- **Reconfigurare fără reinstalare** — OptionsFlow pentru modificarea credențialelor, licenței și selecției NLC
 
 ---
 
@@ -80,7 +81,11 @@ Autentificarea se face cu email + parolă. Token-ul expirat (401) este reînnoit
 | **Parolă** | Parola contului MyElectrica | — |
 | **Interval actualizare** | Secunde între interogările API | `3600` (1 oră) |
 
-### Pasul 2 — Selectează NLC-urile
+### Pasul 2 — Licență
+
+Integrarea necesită o licență validă. Poți achiziționa una de la [hubinteligent.org/licenta/myelectrica](https://hubinteligent.org/licenta/myelectrica). Licența se introduce din **OptionsFlow** (Settings → Devices & Services → MyElectrica România → Configure).
+
+### Pasul 3 — Selectează NLC-urile
 
 După autentificare, ierarhia contului este descoperită automat. Fiecare NLC apare cu adresa completă normalizată:
 
@@ -91,7 +96,7 @@ Furcilor 90A, ap. 17, Alba Iulia → NLC: 7002020110 (Electricitate)
 
 Selectezi individual sau bifezi „Monitorizează toate locurile de consum".
 
-### Pasul 3 — Reconfigurare (opțional)
+### Pasul 4 — Reconfigurare (opțional)
 
 Toate setările pot fi modificate după instalare, fără a șterge integrarea:
 
@@ -123,6 +128,7 @@ Cu 3 NLC-uri selectate = 3 device-uri × 10 entități = **30 entități** total
 | `Arhivă facturi` | Ultimele 12 facturi (4.1) | Număr facturi |
 | `Factură restantă` | Facturi neachitate (4.1 filtrat) | Da / Nu |
 | `Arhivă plăți` | Ultimele 12 plăți (5.1) | Număr plăți |
+| `Licență` | Senzor licență (fără licență validă) | Licență necesară |
 
 ### Buton
 
@@ -328,15 +334,16 @@ entities:
 
 ```
 custom_components/myelectrica/
-├── __init__.py          # Setup/unload integrare (runtime_data pattern)
+├── __init__.py          # Setup/unload integrare (runtime_data, licență, heartbeat)
 ├── api.py               # Manager API — login, GET/POST cu retry pe 401
 ├── button.py            # Buton trimitere autocitire per NLC
-├── config_flow.py       # ConfigFlow + OptionsFlow (autentificare, selecție NLC)
+├── config_flow.py       # ConfigFlow + OptionsFlow (autentificare, selecție NLC, licență)
 ├── const.py             # Constante, URL-uri API, mapping luni
 ├── coordinator.py       # DataUpdateCoordinator — fetch centralizat per NLC
 ├── helper.py            # Funcții utilitare, mapping județe, formatare adrese
+├── license.py           # Manager licență (server-side v3.3, Ed25519, HMAC-SHA256)
 ├── manifest.json        # Metadata integrare
-├── sensor.py            # 9 clase senzor cu clasă de bază comună
+├── sensor.py            # 10 clase senzor cu clasă de bază comună + LicentaNecesaraSensor
 ├── strings.json         # Traduceri implicite
 └── translations/
     └── ro.json          # Traduceri române
@@ -348,7 +355,8 @@ custom_components/myelectrica/
 
 - **Home Assistant** 2024.x sau mai nou (pattern `entry.runtime_data`)
 - **HACS** (opțional, pentru instalare ușoară)
-- **Cont MyElectrica România** activ cu email + parolă
+- **Cont MyElectrica România** activ cu email + parolă — [myelectrica.ro](https://myelectrica.ro)
+- **Licență** validă — [hubinteligent.org/licenta/myelectrica](https://hubinteligent.org/licenta/myelectrica)
 
 Nu necesită dependențe externe (nu instalează pachete pip/npm).
 

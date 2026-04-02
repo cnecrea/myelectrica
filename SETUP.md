@@ -10,6 +10,7 @@ Acest ghid acoperă fiecare pas al instalării și configurării integrării MyE
 
 - **Home Assistant** versiunea 2024.x sau mai nouă (necesită pattern `entry.runtime_data`)
 - **Cont MyElectrica România** activ — cu email și parolă funcționale pe [myelectrica.ro](https://myelectrica.ro)
+- **Licență** validă — de la [hubinteligent.org/licenta/myelectrica](https://hubinteligent.org/licenta/myelectrica)
 - **HACS** instalat (opțional, dar recomandat) — [instrucțiuni HACS](https://hacs.xyz/docs/setup/download)
 
 ---
@@ -126,7 +127,22 @@ Ai două opțiuni:
 
 **Observație**: dacă nu selectezi niciun NLC și nu bifezi „toate", vei primi eroare: „Trebuie să selectezi cel puțin un loc de consum sau să activezi opțiunea pentru toate."
 
-### Pasul 4 — Confirmă
+### Pasul 4 — Licență
+
+Integrarea necesită o **licență validă** pentru a funcționa. Fără licență:
+- Se creează doar senzorul `sensor.myelectrica_{nlc}_licenta` cu valoarea „Licență necesară"
+- Toți senzorii normali și butoanele sunt dezactivate
+
+Pentru a introduce licența:
+1. **Settings** → **Devices & Services**
+2. Găsește **MyElectrica România** → click pe **Configure**
+3. Selectează **Licență**
+4. Introdu cheia de licență
+5. Click **Salvează**
+
+Licențe disponibile la: [hubinteligent.org/licenta/myelectrica](https://hubinteligent.org/licenta/myelectrica)
+
+### Pasul 5 — Confirmă
 
 Click **Submit**. Integrarea se instalează și creează:
 - 1 device per NLC selectat
@@ -138,14 +154,19 @@ Prima actualizare durează câteva secunde (interogare API pentru toate endpoint
 
 ## Reconfigurare (fără reinstalare)
 
-Toate setările pot fi modificate din UI, fără a șterge și readăuga integrarea.
+Setările pot fi modificate din UI, fără a șterge și readăuga integrarea.
 
 1. **Settings** → **Devices & Services**
-2. Găsește **MyElectrica** → click pe **Configure** (⚙️)
-3. Completează din nou email, parolă, interval
-4. La pasul următor, poți modifica selecția NLC-urilor
-5. Click **Submit**
-6. Integrarea se reîncarcă automat (nu e nevoie de restart)
+2. Găsește **MyElectrica România** → click pe **Configure** (⚙️)
+3. Poți modifica:
+   - Credențialele (email, parolă)
+   - Intervalul de actualizare
+   - Cheia de licență
+   - Selecția NLC-urilor
+4. Click **Submit**
+5. Integrarea se reîncarcă automat (nu e nevoie de restart)
+
+**Validare**: dacă modifici credențialele și noile date sunt greșite, vei primi o eroare și configurația existentă rămâne neschimbată.
 
 **Observație**: la reconfigurare, ierarhia contului este redescoperită. Dacă au apărut NLC-uri noi (nouă locuință, nou contor), le vei vedea în listă.
 
