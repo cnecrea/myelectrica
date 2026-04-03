@@ -10,7 +10,7 @@ Acest ghid acoperă fiecare pas al instalării și configurării integrării MyE
 
 - **Home Assistant** versiunea 2024.x sau mai nouă (necesită pattern `entry.runtime_data`)
 - **Cont MyElectrica România** activ — cu email și parolă funcționale pe [myelectrica.ro](https://myelectrica.ro)
-- **Licență** validă — de la [hubinteligent.org/licenta/myelectrica](https://hubinteligent.org/licenta/myelectrica)
+- **Licență** validă — de la [hubinteligent.org/donate?ref=myelectrica](https://hubinteligent.org/donate?ref=myelectrica)
 - **HACS** instalat (opțional, dar recomandat) — [instrucțiuni HACS](https://hacs.xyz/docs/setup/download)
 
 ---
