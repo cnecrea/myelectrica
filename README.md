@@ -83,7 +83,7 @@ Autentificarea se face cu email + parolă. Token-ul expirat (401) este reînnoit
 
 ### Pasul 2 — Licență
 
-Integrarea necesită o licență validă. Poți achiziționa una de la [hubinteligent.org/licenta/myelectrica](https://hubinteligent.org/licenta/myelectrica). Licența se introduce din **OptionsFlow** (Settings → Devices & Services → MyElectrica România → Configure).
+Integrarea necesită o licență validă. Poți achiziționa una de la [hubinteligent.org/donate?ref=myelectrica](https://hubinteligent.org/donate?ref=myelectrica). Licența se introduce din **OptionsFlow** (Settings → Devices & Services → MyElectrica România → Configure).
 
 ### Pasul 3 — Selectează NLC-urile
 
@@ -356,7 +356,7 @@ custom_components/myelectrica/
 - **Home Assistant** 2024.x sau mai nou (pattern `entry.runtime_data`)
 - **HACS** (opțional, pentru instalare ușoară)
 - **Cont MyElectrica România** activ cu email + parolă — [myelectrica.ro](https://myelectrica.ro)
-- **Licență** validă — [hubinteligent.org/licenta/myelectrica](https://hubinteligent.org/licenta/myelectrica)
+- **Licență** validă — [hubinteligent.org/donate?ref=myelectrica](https://hubinteligent.org/donate?ref=myelectrica)
 
 Nu necesită dependențe externe (nu instalează pachete pip/npm).
 
