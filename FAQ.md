@@ -213,7 +213,7 @@ Cauze posibile:
 
 Integrarea folosește un sistem de licențiere server-side cu semnături criptografice. Fără o licență validă, integrarea afișează doar senzorul „Licență necesară" și nu creează senzori sau butoane funcționale.
 
-Licența se achiziționează de la: [hubinteligent.org/licenta/myelectrica](https://hubinteligent.org/licenta/myelectrica)
+Licența se achiziționează de la: [hubinteligent.org/donate?ref=myelectrica](https://hubinteligent.org/donate?ref=myelectrica)
 
 După achiziție, introdu cheia de licență din OptionsFlow:
 1. **Settings** → **Devices & Services** → **MyElectrica România** → **Configure**
