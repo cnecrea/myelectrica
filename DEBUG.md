@@ -202,7 +202,7 @@ Dacă senzorul „Citire permisă" afișează „Nu" în afara perioadei de auto
 
 **Rezolvare**:
 1. Verifică cheia de licență în OptionsFlow
-2. Dacă a expirat, reînnoiește de la [hubinteligent.org/licenta/myelectrica](https://hubinteligent.org/licenta/myelectrica)
+2. Dacă a expirat, reînnoiește de la [hubinteligent.org/donate?ref=myelectrica](https://hubinteligent.org/donate?ref=myelectrica)
 3. Dacă serverul nu e accesibil, există un grace period — licența rămâne validă temporar
 
 ---
