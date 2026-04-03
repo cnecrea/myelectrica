@@ -105,4 +105,4 @@ MONTHS_NUM_RO: dict[str, str] = {
 CONF_LICENSE_KEY = "license_key"
 LICENSE_DATA_KEY = "myelectrica_license_manager"
 
-LICENSE_PURCHASE_URL: Final = "https://hubinteligent.org/licenta/myelectrica"
+LICENSE_PURCHASE_URL: Final = "https://hubinteligent.org/donate?ref=myelectrica"
