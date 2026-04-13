@@ -111,5 +111,15 @@
         "name": "Trimite index"
       }
     }
+  },
+  "issues": {
+    "trial_expired": {
+      "title": "Licența de probă a expirat — MyElectrica România",
+      "description": "Perioada de evaluare gratuită s-a încheiat.\n\nSenzorii sunt dezactivați până la obținerea unei licențe.\n\n[Obține o licență acum]({learn_more_url})"
+    },
+    "license_expired": {
+      "title": "Licența a expirat — MyElectrica România",
+      "description": "Licența pentru această integrare a expirat.\n\nSenzorii sunt dezactivați până la reînnoirea licenței.\n\n[Reînnoiește licența]({learn_more_url})"
+    }
   }
 }
