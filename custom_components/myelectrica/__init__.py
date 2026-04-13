@@ -15,6 +15,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.components import persistent_notification
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers import issue_registry as ir
 
 from .const import DOMAIN, LICENSE_DATA_KEY, LICENSE_PURCHASE_URL
 from .coordinator import MyElectricaCoordinator
@@ -112,7 +113,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: MyElectricaConfigEntry) 
             async_track_time_interval,
         )
         from homeassistant.util import dt as dt_util
-from homeassistant.helpers import issue_registry as ir
 
         interval_sec = license_mgr.check_interval_seconds
         _LOGGER.debug(
