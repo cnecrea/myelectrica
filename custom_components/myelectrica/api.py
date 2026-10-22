@@ -34,6 +34,9 @@ _LOGGER = logging.getLogger(__name__)
 # Timeout global pentru orice request (secunde)
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30)
 
+# Rezultat intern: token-ul a fost respins (HTTP 401) → re-login + o reîncercare
+_UNAUTHORIZED = object()
+
 
 class MyElectricaAPI:
     """Manager API pentru integrarea MyElectrica."""
@@ -74,16 +77,25 @@ class MyElectricaAPI:
                     self._token = None
                     return False
 
-                data = await resp.json()
-                _LOGGER.debug("[MyElectrica] Login response data: %s", data)
+                data = await resp.json(content_type=None)
+                # Răspunsul conține token-ul de sesiune — nu îl scriem în log
+                _LOGGER.debug(
+                    "[MyElectrica] Login răspuns: error=%s",
+                    data.get("error") if isinstance(data, dict) else type(data).__name__,
+                )
 
-                if data.get("error") is False:
+                if isinstance(data, dict) and data.get("error") is False and data.get("app_token"):
                     self._token = data.get("app_token")
                     _LOGGER.debug("[MyElectrica] Login OK — token obținut")
                     return True
 
-                _LOGGER.error("[MyElectrica] Login respins de API: %s", data)
+                _LOGGER.error(
+                    "[MyElectrica] Login respins de API: %s",
+                    data.get("message") or data.get("errors") if isinstance(data, dict) else data,
+                )
 
+        except ValueError:
+            _LOGGER.error("[MyElectrica] Răspuns invalid (non-JSON) la login")
         except aiohttp.ClientError as err:
             _LOGGER.error("[MyElectrica] Excepție la login: %s", err)
         except TimeoutError:
@@ -106,18 +118,20 @@ class MyElectricaAPI:
                 return None
 
         data = await self._do_get(url)
-        if data is not None:
+        if data is not _UNAUTHORIZED:
             return data
 
-        # Retry: re-login și a doua încercare
+        # Token expirat: re-login și a doua încercare. Doar la 401 — la erori de
+        # rețea / 5xx un re-login nu ajută și ar dubla cererile către un server căzut.
         _LOGGER.debug("[MyElectrica] Retry: re-autentificare pentru %s", url)
         if await self.async_login():
-            return await self._do_get(url)
+            data = await self._do_get(url)
+            return None if data is _UNAUTHORIZED else data
 
         return None
 
-    async def _do_get(self, url: str) -> dict | list | None:
-        """Execută un singur GET.  Returnează JSON sau None."""
+    async def _do_get(self, url: str) -> dict | list | object | None:
+        """Execută un singur GET.  Returnează JSON, None sau _UNAUTHORIZED (401)."""
         headers = {
             "accept": "application/json",
             "authorization": f"Bearer {self._token}",
@@ -128,7 +142,7 @@ class MyElectricaAPI:
                 url, headers=headers, timeout=REQUEST_TIMEOUT
             ) as resp:
                 if 200 <= resp.status < 300:
-                    data = await resp.json()
+                    data = await resp.json(content_type=None)
                     _LOGGER.debug(
                         "[MyElectrica] GET OK (HTTP %s): %s — Received data: %s",
                         resp.status, url, data,
@@ -136,11 +150,11 @@ class MyElectricaAPI:
                     return data
 
                 if resp.status == 401:
-                    _LOGGER.warning(
+                    _LOGGER.debug(
                         "[MyElectrica] Token expirat (401) pentru %s", url
                     )
                     self._token = None
-                    return None
+                    return _UNAUTHORIZED
 
                 _LOGGER.error(
                     "[MyElectrica] GET HTTP %s — URL: %s — răspuns: %s",
@@ -148,6 +162,8 @@ class MyElectricaAPI:
                     url,
                     await resp.text(),
                 )
+        except ValueError:
+            _LOGGER.error("[MyElectrica] Răspuns invalid (non-JSON): %s", url)
         except aiohttp.ClientError as err:
             _LOGGER.error("[MyElectrica] Eroare conexiune: %s — %s", url, err)
         except TimeoutError:
@@ -257,17 +273,18 @@ class MyElectricaAPI:
                 return None
 
         data = await self._do_post(url, payload)
-        if data is not None:
+        if data is not _UNAUTHORIZED:
             return data
 
         _LOGGER.debug("[MyElectrica] Retry POST: re-autentificare pentru %s", url)
         if await self.async_login():
-            return await self._do_post(url, payload)
+            data = await self._do_post(url, payload)
+            return None if data is _UNAUTHORIZED else data
 
         return None
 
-    async def _do_post(self, url: str, payload: dict) -> dict | None:
-        """Execută un singur POST autorizat.  Returnează JSON sau None."""
+    async def _do_post(self, url: str, payload: dict) -> dict | object | None:
+        """Execută un singur POST autorizat.  Returnează JSON, None sau _UNAUTHORIZED."""
         headers = {
             "accept": "application/json",
             "content-type": "application/json",
@@ -279,7 +296,7 @@ class MyElectricaAPI:
                 url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT
             ) as resp:
                 if 200 <= resp.status < 300:
-                    data = await resp.json()
+                    data = await resp.json(content_type=None)
                     _LOGGER.debug(
                         "[MyElectrica] POST OK (HTTP %s): %s — Received data: %s",
                         resp.status, url, data,
@@ -287,16 +304,18 @@ class MyElectricaAPI:
                     return data
 
                 if resp.status == 401:
-                    _LOGGER.warning(
+                    _LOGGER.debug(
                         "[MyElectrica] Token expirat (401) POST %s", url
                     )
                     self._token = None
-                    return None
+                    return _UNAUTHORIZED
 
                 # Eroare API (4xx/5xx non-401) — returnăm JSON-ul
                 # ca dict, NU None, ca să nu declanșeze retry inutil.
                 try:
-                    error_data = await resp.json()
+                    error_data = await resp.json(content_type=None)
+                    if not isinstance(error_data, dict):
+                        raise ValueError
                 except Exception:
                     error_data = {"status": str(resp.status), "errors": [
                         {"errorMessage": await resp.text()}
@@ -306,6 +325,8 @@ class MyElectricaAPI:
                     resp.status, url, error_data,
                 )
                 return error_data
+        except ValueError:
+            _LOGGER.error("[MyElectrica] Răspuns invalid (non-JSON) POST: %s", url)
         except aiohttp.ClientError as err:
             _LOGGER.error("[MyElectrica] Eroare conexiune POST: %s — %s", url, err)
         except TimeoutError:

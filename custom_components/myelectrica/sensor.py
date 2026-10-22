@@ -2,10 +2,11 @@
 Platforma Sensor pentru MyElectrica România.
 
 Creează câte un device per NLC (loc de consum) descoperit în ierarhie,
-fiecare cu 9 senzori:
+fiecare cu 9 senzori (+1 la prosumatori):
   1. Date contract      (3.3)
   2. Date client        (3.2)
-  3. Index curent       (6.1)
+  3. Index curent       (6.1)  — kWh, utilizabil în tabloul Energy
+  3b. Index energie produsă (6.1 / 7.1, registrul 2.8.0) — doar la prosumatori
   4. Istoric citiri     (7.1)
   5. Citire permisă     (6.1 PAC)
   6. Convenție consum   (8.1)
@@ -17,8 +18,13 @@ fiecare cu 9 senzori:
 import logging
 from datetime import datetime
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
@@ -42,6 +48,90 @@ from .helper import (
 _LOGGER = logging.getLogger(__name__)
 
 
+# ── Registre contor (OBIS) ───────────────────────
+REGISTRU_CONSUM = "1.8.0"   # energie activă consumată
+REGISTRU_PRODUS = "2.8.0"   # energie activă produsă / injectată (prosumator)
+
+
+def _indicator_activ(value) -> bool:
+    """Indicatorii API vin ca "1"/"0" (meter-list) sau "true"/"false" (contract)."""
+    return str(value).strip().lower() in ("1", "true", "x", "da")
+
+
+def _index_numeric(value) -> int | float | None:
+    """Indexul contorului ca număr (API-ul îl trimite ca text: "15838")."""
+    try:
+        numar = float(str(value).strip().replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+    return int(numar) if numar.is_integer() else numar
+
+
+def _este_productie(register_code: str) -> bool:
+    return str(register_code or "").startswith("2.8")
+
+
+def _cadran_din_meter_list(response, productie: bool) -> tuple[dict | None, dict | None]:
+    """(contor, cadran) pentru consum sau producție din răspunsul meter-list.
+
+    Consum: registrul 1.8.0, altfel primul cadran care nu e de producție
+    (ex: 1.8.1 la tarif diferențiat). Producție: 2.8.0, altfel primul 2.8.x.
+    """
+    if not isinstance(response, dict):
+        return None, None
+    tinta = REGISTRU_PRODUS if productie else REGISTRU_CONSUM
+    rezerva: tuple[dict | None, dict | None] = (None, None)
+    for contor in response.get("to_Contor", []) or []:
+        for cadran in contor.get("to_Cadran", []) or []:
+            cod = cadran.get("RegisterCode", "")
+            if cod == tinta:
+                return contor, cadran
+            if rezerva[1] is None and _este_productie(cod) == productie:
+                rezerva = (contor, cadran)
+    return rezerva
+
+
+def _citiri_productie(readings) -> list[dict]:
+    """Citirile registrului de producție (2.8.x) din istoric, cele mai noi primele."""
+    if not isinstance(readings, list):
+        return []
+    return sorted(
+        (r for r in readings if _este_productie(r.get("RegisterCode", ""))),
+        key=lambda r: r.get("ReadingDate", ""),
+        reverse=True,
+    )
+
+
+def _eticheta_unica(attrs: dict, eticheta: str) -> str:
+    """Două intrări cu aceeași etichetă (ex: două plăți în aceeași zi) nu se suprascriu."""
+    if eticheta not in attrs:
+        return eticheta
+    n = 2
+    while f"{eticheta} ({n})" in attrs:
+        n += 1
+    return f"{eticheta} ({n})"
+
+
+def _nlcs_din_ierarhie(hierarchy: list[dict]) -> list[str]:
+    return [
+        loc["IdLocConsum"]
+        for client in hierarchy
+        for contract in client.get("to_ContContract", [])
+        for loc in contract.get("to_LocConsum", [])
+        if loc.get("IdLocConsum")
+    ]
+
+
+def _are_productie(coordinator: MyElectricaCoordinator, nlc: str) -> bool:
+    """NLC-ul are contor de prosumator (registru 2.8.x în meter-list sau în istoric)?"""
+    data = coordinator.data or {}
+    meter = get_body_response((data.get("meter_list") or {}).get(nlc))
+    if _cadran_din_meter_list(meter, productie=True)[1] is not None:
+        return True
+    readings = get_body_response((data.get("readings") or {}).get(nlc))
+    return bool(_citiri_productie(readings))
+
+
 # ── async_setup_entry ────────────────────────────
 
 
@@ -59,21 +149,16 @@ async def async_setup_entry(
     """Configurează senzorii pe baza ierarhiei descoperite."""
     coordinator: MyElectricaCoordinator = config_entry.runtime_data
 
-    if not coordinator.data:
-        _LOGGER.warning("[MyElectrica] Coordinator fără date la setup")
-        return
-
-    hierarchy = coordinator.data.get("hierarchy", [])
-    sensors: list[SensorEntity] = []
-
     # NLC-urile selectate de utilizator (dacă există)
     selected_nlcs = config_entry.data.get("selected_nlcs")
 
     # Verifică dacă licența este validă
     license_valid = _is_license_valid(hass)
 
-    # Curăță entitățile orfane la tranziție licență
     if not license_valid:
+        # Fără licență coordinatorul nu cere date de la MyElectrica, deci nu
+        # depindem de ele (înainte: „Coordinator fără date" → niciun senzor,
+        # iar senzorii vechi rămâneau orfani, „indisponibili").
         registru = er.async_get(hass)
         for entry_reg in er.async_entries_for_config_entry(
             registru, config_entry.entry_id
@@ -87,6 +172,23 @@ async def async_setup_entry(
                     "[MyElectrica] Senzor orfan eliminat (licență expirată): %s",
                     entry_reg.entity_id,
                 )
+        nlcs = list(selected_nlcs or []) or _nlcs_din_ierarhie(
+            (coordinator.data or {}).get("hierarchy", [])
+        )
+        async_add_entities(
+            LicentaNecesaraSensor(
+                coordinator, config_entry, NlcContext(nlc, "", "", "", "")
+            )
+            for nlc in nlcs
+        )
+        return
+
+    if not coordinator.data:
+        _LOGGER.warning("[MyElectrica] Coordinator fără date la setup")
+        return
+
+    hierarchy = coordinator.data.get("hierarchy", [])
+    sensors: list[SensorEntity] = []
 
     # Iterăm ierarhia: client → contract → NLC
     for client in hierarchy:
@@ -115,35 +217,36 @@ async def async_setup_entry(
                     address=address,
                 )
 
-                # Dacă licența nu este validă, adaugă doar LicentaNecesaraSensor
-                if not license_valid:
-                    sensors.append(LicentaNecesaraSensor(coordinator, config_entry, ctx))
-                else:
-                    # Curăță senzorul de licență orfan (dacă exista anterior)
-                    registru = er.async_get(hass)
-                    licenta_uid = f"{DOMAIN}_{ctx.nlc}_licenta_necesara"
-                    entitate_licenta = registru.async_get_entity_id(
-                        "sensor", DOMAIN, licenta_uid
+                # Curăță senzorul de licență orfan (dacă exista anterior)
+                registru = er.async_get(hass)
+                licenta_uid = f"{DOMAIN}_{ctx.nlc}_licenta_necesara"
+                entitate_licenta = registru.async_get_entity_id(
+                    "sensor", DOMAIN, licenta_uid
+                )
+                if entitate_licenta is not None:
+                    registru.async_remove(entitate_licenta)
+                    _LOGGER.debug(
+                        "[MyElectrica] Entitate LicentaNecesaraSensor orfană "
+                        "eliminată: %s",
+                        entitate_licenta,
                     )
-                    if entitate_licenta is not None:
-                        registru.async_remove(entitate_licenta)
-                        _LOGGER.debug(
-                            "[MyElectrica] Entitate LicentaNecesaraSensor orfană "
-                            "eliminată: %s",
-                            entitate_licenta,
-                        )
 
-                    sensors.extend([
-                        ContractNlcSensor(coordinator, config_entry, ctx),
-                        ClientDataSensor(coordinator, config_entry, ctx),
-                        IndexCurentSensor(coordinator, config_entry, ctx),
-                        IstoricCitiriSensor(coordinator, config_entry, ctx),
-                        CitirePermisaSensor(coordinator, config_entry, ctx),
-                        ConventieConsumSensor(coordinator, config_entry, ctx),
-                        ArhivaFacturiSensor(coordinator, config_entry, ctx),
-                        FacturaRestantaSensor(coordinator, config_entry, ctx),
-                        ArhivaPlatiSensor(coordinator, config_entry, ctx),
-                    ])
+                sensors.extend([
+                    ContractNlcSensor(coordinator, config_entry, ctx),
+                    ClientDataSensor(coordinator, config_entry, ctx),
+                    IndexCurentSensor(coordinator, config_entry, ctx),
+                    IstoricCitiriSensor(coordinator, config_entry, ctx),
+                    CitirePermisaSensor(coordinator, config_entry, ctx),
+                    ConventieConsumSensor(coordinator, config_entry, ctx),
+                    ArhivaFacturiSensor(coordinator, config_entry, ctx),
+                    FacturaRestantaSensor(coordinator, config_entry, ctx),
+                    ArhivaPlatiSensor(coordinator, config_entry, ctx),
+                ])
+                # Prosumator: indexul energiei produse (pentru „Return to grid" în Energy)
+                if _are_productie(coordinator, nlc):
+                    sensors.append(
+                        IndexEnergieProdusaSensor(coordinator, config_entry, ctx)
+                    )
 
     _LOGGER.debug(
         "[MyElectrica] Se adaugă %s senzori (entry_id=%s)",
@@ -313,7 +416,7 @@ class ContractNlcSensor(MyElectricaEntity):
         if not response:
             return None
         # Ia valoarea și pune prima literă mare
-        return response.get("ContractStatus", "Necunoscut").capitalize()
+        return (response.get("ContractStatus") or "Necunoscut").capitalize()
 
     @property
     def extra_state_attributes(self):
@@ -344,9 +447,7 @@ class ContractNlcSensor(MyElectricaEntity):
             "Status": response.get("ContractStatus", "Necunoscut").lower(),
             "Metodă estimare": response.get("EstimationMethod", "Necunoscut").lower(),
             "Autocitire disponibilă": (
-                "Da"
-                if response.get("PACIndicator") == "true"
-                else "Nu"
+                "Da" if _indicator_activ(response.get("PACIndicator")) else "Nu"
             ),
             "Periodicitate citiri": response.get(
                 "PeriodicitateCitiri", "Necunoscut"
@@ -411,10 +512,18 @@ class ClientDataSensor(MyElectricaEntity):
 # ── 3. IndexCurentSensor (6.1) ──────────────────
 
 class IndexCurentSensor(MyElectricaEntity):
-    """Index curent contor (6.1 — meter-list)."""
+    """Index curent contor (6.1 — meter-list), registrul de consum.
+
+    Senzor de energie (kWh, total_increasing) → poate fi adăugat în tabloul
+    Energy al Home Assistant („Grid consumption").
+    """
 
     _attr_icon = "mdi:counter"
     _attr_translation_key = "index_curent"
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_suggested_display_precision = 0
 
     def __init__(self, coordinator, config_entry, ctx: NlcContext) -> None:
         super().__init__(coordinator, config_entry, ctx)
@@ -423,30 +532,26 @@ class IndexCurentSensor(MyElectricaEntity):
         self._custom_entity_id = f"sensor.{DOMAIN}_{ctx.nlc}_index_curent"
 
     def _get_meter_data(self) -> tuple[dict | None, dict | None, dict | None]:
-        """Returnează (response, contor, cadran) sau (None, None, None)."""
+        """Returnează (response, contor, cadran de consum) sau (None, None, None).
+
+        Înainte se lua primul cadran, oricare ar fi fost — la un contor de
+        prosumator putea fi registrul de producție.
+        """
         response = self._get_nlc_response("meter_list")
-        if not response:
+        if not isinstance(response, dict):
             return None, None, None
-
-        contoare = response.get("to_Contor", [])
-        if not contoare:
-            return response, None, None
-
-        contor = contoare[0]
-        cadrane = contor.get("to_Cadran", [])
-        if not cadrane:
-            return response, contor, None
-
-        return response, contor, cadrane[0]
+        contor, cadran = _cadran_din_meter_list(response, productie=False)
+        return response, contor, cadran
 
     @property
     def native_value(self):
+        # Senzor numeric: fără licență → necunoscut (un text ar fi respins de HA)
         if not self._license_valid:
-            return "Licență necesară"
+            return None
         _, _, cadran = self._get_meter_data()
         if cadran is None:
             return None
-        return cadran.get("Index")
+        return _index_numeric(cadran.get("Index"))
 
     @property
     def extra_state_attributes(self):
@@ -478,8 +583,8 @@ class IndexCurentSensor(MyElectricaEntity):
             )
 
         if response:
-            pac = response.get("PACIndicator")
-            if pac == "true":
+            # meter-list trimite "1"/"0" (înainte se compara cu "true" → nu apărea niciodată)
+            if _indicator_activ(response.get("PACIndicator")):
                 attrs["Perioadă autocitire început"] = format_date_ro(
                     response.get("StartDatePAC", "")
                 )
@@ -492,7 +597,7 @@ class IndexCurentSensor(MyElectricaEntity):
         for c_idx, cnt in enumerate(all_contoare):
             cadrane = cnt.get("to_Cadran", [])
             for d_idx, cdr in enumerate(cadrane):
-                if c_idx == 0 and d_idx == 0:
+                if cdr is cadran:
                     continue  # deja afișat mai sus
                 prefix = f"Contor {c_idx + 1} cadran {d_idx + 1}"
                 attrs[f"{prefix} index"] = cdr.get("Index", "Necunoscut")
@@ -503,6 +608,71 @@ class IndexCurentSensor(MyElectricaEntity):
                     cdr.get("ReadingDate", "")
                 )
 
+        attrs["attribution"] = ATTRIBUTION
+        return attrs
+
+
+# ── 3b. IndexEnergieProdusaSensor (prosumator) ──
+
+class IndexEnergieProdusaSensor(MyElectricaEntity):
+    """Index energie produsă / injectată în rețea (registrul 2.8.0, prosumator).
+
+    Sursa: meter-list (dacă listează registrul de producție), altfel cea mai
+    recentă citire 2.8.x din istoricul de citiri (readings).
+    Senzor de energie → „Return to grid" în tabloul Energy.
+    """
+
+    _attr_icon = "mdi:solar-power-variant"
+    _attr_translation_key = "index_energie_produsa"
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_suggested_display_precision = 0
+
+    def __init__(self, coordinator, config_entry, ctx: NlcContext) -> None:
+        super().__init__(coordinator, config_entry, ctx)
+        self._attr_name = "Index energie produsă"
+        self._attr_unique_id = f"{DOMAIN}_{ctx.nlc}_index_energie_produsa"
+        self._custom_entity_id = f"sensor.{DOMAIN}_{ctx.nlc}_index_energie_produsa"
+
+    def _get_productie(self) -> tuple[dict | None, dict | None, str]:
+        """(contor, citire, sursă) pentru registrul de producție."""
+        contor, cadran = _cadran_din_meter_list(
+            self._get_nlc_response("meter_list"), productie=True
+        )
+        if cadran is not None:
+            return contor, cadran, "listă contoare"
+        citiri = _citiri_productie(self._get_nlc_response("readings"))
+        if citiri:
+            return citiri[0], citiri[0], "istoric citiri"
+        return None, None, ""
+
+    @property
+    def native_value(self):
+        if not self._license_valid:
+            return None
+        _, citire, _ = self._get_productie()
+        if citire is None:
+            return None
+        return _index_numeric(citire.get("Index"))
+
+    @property
+    def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
+        contor, citire, sursa = self._get_productie()
+        if citire is None:
+            return {"attribution": ATTRIBUTION}
+        attrs = {
+            "Serie contor": (contor or {}).get("SerieContor", "Necunoscut"),
+            "Data citirii": format_date_ro(citire.get("ReadingDate", "")),
+            "Tip citire": citire.get("MeterReadingType") or "Necunoscut",
+            "Cod registru": citire.get("RegisterCode", "Necunoscut"),
+            "Descriere registru": citire.get("RegisterDescription", "Necunoscut"),
+            "Sursă": sursa,
+        }
+        if citire.get("InstallationDate"):
+            attrs["Data instalării"] = format_date_ro(citire["InstallationDate"])
         attrs["attribution"] = ATTRIBUTION
         return attrs
 
@@ -528,8 +698,18 @@ class IstoricCitiriSensor(MyElectricaEntity):
         return []
 
     def _get_recent_readings(self) -> list[dict]:
-        """Cele mai recente 12 citiri (ordine cronologică inversă)."""
-        return list(reversed(self._get_readings()))[:12]
+        """Citirile din cele mai recente 12 date (cele mai noi primele).
+
+        La prosumator, la aceeași dată există câte o citire pe registru
+        (consum 1.8.0 + producție 2.8.0).
+        """
+        readings = sorted(
+            self._get_readings(),
+            key=lambda r: r.get("ReadingDate", ""),
+            reverse=True,
+        )
+        date_recente = list(dict.fromkeys(r.get("ReadingDate", "") for r in readings))[:12]
+        return [r for r in readings if r.get("ReadingDate", "") in date_recente]
 
     @property
     def native_value(self):
@@ -559,8 +739,15 @@ class IstoricCitiriSensor(MyElectricaEntity):
             else:
                 tip = read_type_raw.lower() if read_type_raw else "necunoscut"
 
-            label = f"Index ({tip}) {date}"
-            attrs[label] = index_val
+            register = reading.get("RegisterCode", "")
+            if _este_productie(register):
+                label = f"Index produs ({tip}) {date}"
+            elif register and register != REGISTRU_CONSUM:
+                label = f"Index {register} ({tip}) {date}"
+            else:
+                label = f"Index ({tip}) {date}"
+            # Înainte: citirile de producție și consum din aceeași zi se suprascriau
+            attrs[_eticheta_unica(attrs, label)] = index_val
 
         # Date contor din prima citire disponibilă
         if recent:
@@ -608,7 +795,7 @@ class CitirePermisaSensor(MyElectricaEntity):
         response = self._get_pac_data()
         if not response:
             return "Nu"
-        return "Da" if response.get("PACIndicator") == "1" else "Nu"
+        return "Da" if _indicator_activ(response.get("PACIndicator")) else "Nu"
 
     @property
     def extra_state_attributes(self):
@@ -717,7 +904,9 @@ class ArhivaFacturiSensor(MyElectricaEntity):
 
     def _get_recent_invoices(self) -> list[dict]:
         """Cele mai recente 12 facturi (ordine cronologică inversă)."""
-        return list(reversed(self._get_invoices()))[:12]
+        return sorted(
+            self._get_invoices(), key=lambda f: f.get("IssueDate", ""), reverse=True
+        )[:12]
 
     @property
     def native_value(self):
@@ -744,7 +933,7 @@ class ArhivaFacturiSensor(MyElectricaEntity):
             label = f"Emisă pe {date}"
             value = f"{format_ron(amount)} lei"
 
-            attrs[label] = value
+            attrs[_eticheta_unica(attrs, label)] = value
 
         attrs["Total facturi"] = str(len(recent))
         attrs["Total facturat"] = f"{format_ron(total)} lei"
@@ -915,7 +1104,9 @@ class ArhivaPlatiSensor(MyElectricaEntity):
 
     def _get_recent_payments(self) -> list[dict]:
         """Cele mai recente 12 plăți (ordine cronologică inversă)."""
-        return list(reversed(self._get_payments()))[:12]
+        return sorted(
+            self._get_payments(), key=lambda p: p.get("PaymentDate", ""), reverse=True
+        )[:12]
 
     @property
     def native_value(self):
@@ -945,7 +1136,8 @@ class ArhivaPlatiSensor(MyElectricaEntity):
             label = f"Plătită pe {date}"
             value = f"{format_ron(amount)} lei"
 
-            attrs[label] = value
+            # Două plăți în aceeași zi (ex: două facturi) nu se mai suprascriu
+            attrs[_eticheta_unica(attrs, label)] = value
 
         attrs["Total plăți"] = str(len(recent))
         attrs["Total plătit"] = f"{format_ron(total)} lei"

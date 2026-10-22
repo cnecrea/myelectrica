@@ -12,6 +12,8 @@ import logging
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -19,7 +21,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import ATTRIBUTION, DOMAIN, LICENSE_DATA_KEY
 from .coordinator import MyElectricaCoordinator
 from .helper import build_address, get_body_response
-from .sensor import NlcContext
+from .sensor import NlcContext, _cadran_din_meter_list
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,6 +45,13 @@ async def async_setup_entry(
     mgr = hass.data.get(DOMAIN, {}).get(LICENSE_DATA_KEY)
     if mgr is None or not mgr.is_valid:
         _LOGGER.warning("[MyElectrica] Butoane dezactivate — licență invalidă")
+        # Butoanele create anterior ar rămâne orfane („indisponibile") în registry
+        registru = er.async_get(hass)
+        for entry_reg in er.async_entries_for_config_entry(
+            registru, config_entry.entry_id
+        ):
+            if entry_reg.domain == "button":
+                registru.async_remove(entry_reg.entity_id)
         return
 
     coordinator: MyElectricaCoordinator = config_entry.runtime_data
@@ -151,17 +160,11 @@ class TrimiteIndexButton(
         meter_raw = meter_bucket.get(self._ctx.nlc)
         meter_resp = get_body_response(meter_raw)
 
-        serie_contor = ""
-        register_code = ""
-
-        if meter_resp:
-            contoare = meter_resp.get("to_Contor", [])
-            if contoare:
-                contor = contoare[0]
-                serie_contor = contor.get("SerieContor", "")
-                cadrane = contor.get("to_Cadran", [])
-                if cadrane:
-                    register_code = cadrane[0].get("RegisterCode", "")
+        # Registrul de CONSUM (1.8.0) — înainte se lua primul cadran, care la
+        # un contor de prosumator putea fi registrul de producție (2.8.0).
+        contor, cadran = _cadran_din_meter_list(meter_resp, productie=False)
+        serie_contor = (contor or {}).get("SerieContor", "")
+        register_code = (cadran or {}).get("RegisterCode", "")
 
         # Product name din contract_details
         contract_bucket = self.coordinator.data.get("contract_details", {})
@@ -205,53 +208,42 @@ class TrimiteIndexButton(
         }
 
     async def async_press(self) -> None:
-        """Trimite indexul citit din input_number către API."""
+        """Trimite indexul citit din input_number către API.
+
+        Orice eșec ridică HomeAssistantError → mesajul apare în interfață
+        (înainte erorile ajungeau doar în log și apăsarea părea reușită).
+        """
         serie_contor, register_code, product_name = self._get_meter_info()
 
         if not serie_contor or not register_code:
-            _LOGGER.error(
-                "[MyElectrica] Nu se pot determina datele contorului "
-                "pentru NLC %s (serie=%s, register=%s)",
-                self._ctx.nlc,
-                serie_contor,
-                register_code,
+            raise HomeAssistantError(
+                f"Nu se pot determina datele contorului pentru NLC {self._ctx.nlc} "
+                f"(serie={serie_contor or '-'}, registru={register_code or '-'})."
             )
-            return
 
         # Determinăm entity_id-ul input_number
         input_entity_id = self._get_input_number_entity_id(product_name)
         if not input_entity_id:
-            _LOGGER.error(
-                "[MyElectrica] Nu se poate determina input_number pentru "
-                "produsul '%s' (NLC: %s). Produse suportate: "
+            raise HomeAssistantError(
+                f"Nu se poate determina input_number pentru produsul "
+                f"'{product_name}' (NLC {self._ctx.nlc}). Produse suportate: "
                 "Electricitate → input_number.energy_meter_reading, "
-                "Gaz → input_number.gas_meter_reading",
-                product_name,
-                self._ctx.nlc,
+                "Gaz → input_number.gas_meter_reading."
             )
-            return
 
         # Citim valoarea din input_number
         state = self.hass.states.get(input_entity_id)
         if state is None or state.state in ("unknown", "unavailable"):
-            _LOGGER.error(
-                "[MyElectrica] Entitatea %s nu există sau nu are valoare "
-                "(NLC: %s)",
-                input_entity_id,
-                self._ctx.nlc,
+            raise HomeAssistantError(
+                f"Entitatea {input_entity_id} nu există sau nu are valoare."
             )
-            return
 
         try:
             index_value = str(int(float(state.state)))
-        except (ValueError, TypeError):
-            _LOGGER.error(
-                "[MyElectrica] Valoare invalidă în %s: '%s' (NLC: %s)",
-                input_entity_id,
-                state.state,
-                self._ctx.nlc,
-            )
-            return
+        except (ValueError, TypeError) as err:
+            raise HomeAssistantError(
+                f"Valoare invalidă în {input_entity_id}: '{state.state}'."
+            ) from err
 
         _LOGGER.info(
             "[MyElectrica] Trimitere index: NLC=%s, contor=%s, "
@@ -271,45 +263,36 @@ class TrimiteIndexButton(
             index_value=index_value,
         )
 
-        if result:
-            # Verificăm dacă e eroare în răspuns
-            body = result.get("body", {})
-            response = body.get("response", {}) if isinstance(body, dict) else {}
-            error_details = response.get("errorDetails") if isinstance(response, dict) else None
-            errors = result.get("errors", [])
-
-            if error_details:
-                _LOGGER.error(
-                    "[MyElectrica] Eroare la trimitere index NLC %s: %s",
-                    self._ctx.nlc,
-                    error_details,
-                )
-            elif errors:
-                # Extragem mesajele de eroare pentru log clar
-                err_msgs = [
-                    e.get("errorMessage", str(e))
-                    for e in errors
-                    if isinstance(e, dict)
-                ] or [str(errors)]
-                _LOGGER.error(
-                    "[MyElectrica] Eroare trimitere index NLC %s: %s",
-                    self._ctx.nlc,
-                    "; ".join(err_msgs),
-                )
-            else:
-                _LOGGER.info(
-                    "[MyElectrica] Index trimis cu succes pentru NLC %s "
-                    "(index=%s)",
-                    self._ctx.nlc,
-                    index_value,
-                )
-
-                # Forțăm refresh date după trimitere
-                await self.coordinator.async_request_refresh()
-        else:
-            _LOGGER.error(
-                "[MyElectrica] Trimitere index eșuată pentru NLC %s — "
-                "API-ul nu a returnat date (posibil eroare de rețea sau "
-                "timeout; verifică logurile anterioare)",
-                self._ctx.nlc,
+        if not result:
+            raise HomeAssistantError(
+                f"Trimiterea indexului a eșuat pentru NLC {self._ctx.nlc} — "
+                "MyElectrica nu a răspuns (rețea / timeout)."
             )
+
+        # Verificăm dacă e eroare în răspuns
+        body = result.get("body", {})
+        response = body.get("response", {}) if isinstance(body, dict) else {}
+        error_details = response.get("errorDetails") if isinstance(response, dict) else None
+        errors = result.get("errors", [])
+
+        if error_details:
+            raise HomeAssistantError(
+                f"MyElectrica a respins indexul {index_value}: {error_details}"
+            )
+        if errors:
+            err_msgs = [
+                e.get("errorMessage", str(e))
+                for e in errors
+                if isinstance(e, dict)
+            ] or [str(errors)]
+            raise HomeAssistantError(
+                f"MyElectrica a respins indexul {index_value}: {'; '.join(err_msgs)}"
+            )
+
+        _LOGGER.info(
+            "[MyElectrica] Index trimis cu succes pentru NLC %s (index=%s)",
+            self._ctx.nlc,
+            index_value,
+        )
+        # Forțăm refresh date după trimitere
+        await self.coordinator.async_request_refresh()

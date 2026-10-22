@@ -155,15 +155,36 @@ class MyElectricaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 len(self._selected_nlcs) if self._selected_nlcs else "toate",
             )
 
+            prev = self.data or {}
+
+            def _sau_anterior(bucket: str, key: str, value: Any) -> Any:
+                """Un endpoint care nu răspunde acum nu golește datele: se
+                păstrează ultimul răspuns bun (ex: indexul folosit în Energy)."""
+                if value is None:
+                    old = (prev.get(bucket) or {}).get(key)
+                    if old is not None:
+                        _LOGGER.debug(
+                            "[MyElectrica] %s/%s indisponibil — păstrez datele anterioare",
+                            bucket, key,
+                        )
+                        return old
+                return value
+
             # ── Date per cod client (doar cele necesare) ──
             client_data: dict[str, Any] = {}
             invoices: dict[str, Any] = {}
             payments: dict[str, Any] = {}
 
             for cc in needed_client_codes:
-                client_data[cc] = await self.api.async_get_client_data(cc)
-                invoices[cc] = await self.api.async_get_invoices(cc)
-                payments[cc] = await self.api.async_get_payments(cc)
+                client_data[cc] = _sau_anterior(
+                    "client_data", cc, await self.api.async_get_client_data(cc)
+                )
+                invoices[cc] = _sau_anterior(
+                    "invoices", cc, await self.api.async_get_invoices(cc)
+                )
+                payments[cc] = _sau_anterior(
+                    "payments", cc, await self.api.async_get_payments(cc)
+                )
 
             # ── Date per NLC (doar cele selectate) ──
             contract_details: dict[str, Any] = {}
@@ -173,10 +194,18 @@ class MyElectricaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             for nlc in filtered_nlcs:
                 cc = nlc_to_client.get(nlc, "")
-                contract_details[nlc] = await self.api.async_get_contract_nlc(nlc)
-                meter_list[nlc] = await self.api.async_get_meter_list(nlc)
-                readings[nlc] = await self.api.async_get_readings(cc, nlc)
-                convention[nlc] = await self.api.async_get_convention(nlc)
+                contract_details[nlc] = _sau_anterior(
+                    "contract_details", nlc, await self.api.async_get_contract_nlc(nlc)
+                )
+                meter_list[nlc] = _sau_anterior(
+                    "meter_list", nlc, await self.api.async_get_meter_list(nlc)
+                )
+                readings[nlc] = _sau_anterior(
+                    "readings", nlc, await self.api.async_get_readings(cc, nlc)
+                )
+                convention[nlc] = _sau_anterior(
+                    "convention", nlc, await self.api.async_get_convention(nlc)
+                )
 
         except UpdateFailed:
             raise

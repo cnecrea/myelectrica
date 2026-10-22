@@ -73,7 +73,8 @@
       "license_key_expired": "Această cheie de licență a expirat.",
       "license_fingerprint_mismatch": "Această cheie de licență este asociată altei instalări.",
       "license_network_error": "Nu se poate conecta la serverul de licențe. Verifică conexiunea la internet.",
-      "license_server_error": "Eroare server licențe. Încearcă din nou mai târziu."
+      "license_server_error": "Eroare server licențe. Încearcă din nou mai târziu.",
+      "already_configured": "Acest cont este deja configurat într-o altă intrare."
     }
   },
   "entity": {
@@ -104,6 +105,9 @@
       },
       "arhiva_plati": {
         "name": "Arhivă plăți"
+      },
+      "index_energie_produsa": {
+        "name": "Index energie produsă"
       }
     },
     "button": {

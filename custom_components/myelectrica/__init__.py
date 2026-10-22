@@ -10,12 +10,13 @@ from __future__ import annotations
 import logging
 
 import aiohttp
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.components import persistent_notification
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.event import async_call_later
 
 from .const import DOMAIN, LICENSE_DATA_KEY, LICENSE_PURCHASE_URL
 from .coordinator import MyElectricaCoordinator
@@ -27,6 +28,13 @@ PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BUTTON]
 
 type MyElectricaConfigEntry = ConfigEntry[MyElectricaCoordinator]
 
+# Stările în care o intrare încă folosește managerul de licențe
+_STARI_ACTIVE = (
+    ConfigEntryState.LOADED,
+    ConfigEntryState.SETUP_IN_PROGRESS,
+    ConfigEntryState.SETUP_RETRY,
+    ConfigEntryState.UNLOAD_IN_PROGRESS,
+)
 
 
 def _update_license_notifications(hass: HomeAssistant, mgr: LicenseManager) -> None:
@@ -37,9 +45,7 @@ def _update_license_notifications(hass: HomeAssistant, mgr: LicenseManager) -> N
         persistent_notification.async_dismiss(hass, "myelectrica_license_expired")
         return
 
-    has_token = bool(mgr._data.get("activation_token"))
-
-    if has_token:
+    if mgr.has_license:
         issue_id = "license_expired"
         notif_title = "MyElectrica România — Licența a expirat"
         notif_message = (
@@ -81,6 +87,74 @@ def _update_license_notifications(hass: HomeAssistant, mgr: LicenseManager) -> N
     _LOGGER.debug("[MyElectrica] Notificare expirare creată: %s", issue_id)
 
 
+def _cleanup_domain(hass: HomeAssistant) -> None:
+    """Oprește verificarea licenței și eliberează datele domeniului."""
+    domain_data = hass.data.pop(DOMAIN, None) or {}
+    cancel_check = domain_data.pop("_cancel_license_check", None)
+    if cancel_check:
+        cancel_check()
+
+
+def _schedule_license_check(hass: HomeAssistant, mgr: LicenseManager) -> None:
+    """Programează următoarea verificare a licenței (un singur timer, reprogramat mereu).
+
+    Momentul vine de la server: imediat după `valid_until`, sau cu backoff
+    (60s → 1h) cât timp serverul nu răspunde. La fiecare verificare: /check
+    (+ /validate pentru licențe); dacă validitatea s-a schimbat → notificări
+    actualizate + reload.
+    """
+    if hass.is_stopping:
+        return  # la oprire sesiunea HTTP se închide — nu mai verificăm
+    domain_data = hass.data.get(DOMAIN)
+    if domain_data is None or domain_data.get(LICENSE_DATA_KEY) is not mgr:
+        return
+    cancel_prev = domain_data.pop("_cancel_license_check", None)
+    if cancel_prev:
+        cancel_prev()
+
+    delay = mgr.check_interval_seconds + (2 if not mgr.needs_heartbeat else 0)
+
+    async def _async_check() -> None:
+        try:
+            was_valid = mgr.is_valid
+            if mgr.needs_heartbeat:
+                await mgr.async_heartbeat()
+            now_valid = mgr.is_valid
+            if hass.data.get(DOMAIN, {}).get(LICENSE_DATA_KEY) is not mgr:
+                return  # integrarea a fost descărcată în timpul verificării
+            if was_valid != now_valid:
+                if now_valid:
+                    _LOGGER.info("[MyElectrica] Licența a redevenit validă — reîncarc")
+                else:
+                    _LOGGER.warning("[MyElectrica] Licența a devenit invalidă — reîncarc")
+                _update_license_notifications(hass, mgr)
+                await mgr._async_reload_entries()
+        except Exception:  # noqa: BLE001 — timer-ul nu trebuie să se oprească
+            _LOGGER.exception("[MyElectrica] Eroare la verificarea periodică a licenței")
+        finally:
+            _schedule_license_check(hass, mgr)
+
+    @callback
+    def _on_timer(_now) -> None:
+        domain_now = hass.data.get(DOMAIN, {})
+        domain_now.pop("_cancel_license_check", None)
+        if hass.is_stopping or domain_now.get(LICENSE_DATA_KEY) is not mgr:
+            return
+        if not any(
+            e.state in _STARI_ACTIVE for e in hass.config_entries.async_entries(DOMAIN)
+        ):
+            # Ex: intrare dezactivată cât era în „setup retry" (HA nu apelează unload)
+            _cleanup_domain(hass)
+            return
+        # Task de fundal: pornirea/oprirea Home Assistant nu așteaptă
+        # niciodată serverul de licențe (issue #329).
+        hass.async_create_background_task(
+            _async_check(), f"{DOMAIN}_license_check"
+        )
+
+    domain_data["_cancel_license_check"] = async_call_later(hass, delay, _on_timer)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: MyElectricaConfigEntry) -> bool:
     """Configurare intrare: creează coordinator, face primul refresh, setează platformele."""
     _LOGGER.debug("[MyElectrica] Setup entry_id=%s", entry.entry_id)
@@ -88,179 +162,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: MyElectricaConfigEntry) 
     hass.data.setdefault(DOMAIN, {})
 
     # ── Inițializare License Manager (o singură instanță per domeniu) ──
-    if LICENSE_DATA_KEY not in hass.data.get(DOMAIN, {}):
-        _LOGGER.debug("[MyElectrica] Inițializez LicenseManager (prima entry)")
+    if LICENSE_DATA_KEY not in hass.data[DOMAIN]:
         license_mgr = LicenseManager(hass)
-        # IMPORTANT: setăm referința ÎNAINTE de async_load() pentru a preveni
-        # race condition-ul: async_load() face await HTTP, ceea ce cedează
-        # event loop-ul. Fără această ordine, alte entry-uri concurente ar vedea
-        # LICENSE_DATA_KEY ca lipsă și ar crea câte un LicenseManager duplicat,
-        # generând N request-uri /check simultane (câte unul per entry).
+        # Referința se setează ÎNAINTE de async_load(): async_load() poate face
+        # await HTTP, iar intrările configurate în paralel nu trebuie să creeze
+        # manageri duplicați.
         hass.data[DOMAIN][LICENSE_DATA_KEY] = license_mgr
-        await license_mgr.async_load()
+        try:
+            await license_mgr.async_load()
+        except Exception:
+            hass.data[DOMAIN].pop(LICENSE_DATA_KEY, None)
+            raise
         _LOGGER.debug(
             "[MyElectrica] LicenseManager: status=%s, valid=%s, fingerprint=%s...",
             license_mgr.status,
             license_mgr.is_valid,
             license_mgr.fingerprint[:16],
         )
-
-        # Heartbeat periodic — intervalul vine de la server (via valid_until)
-        from datetime import timedelta
-
-        from homeassistant.helpers.event import (
-            async_track_point_in_time,
-            async_track_time_interval,
-        )
-        from homeassistant.util import dt as dt_util
-
-        interval_sec = license_mgr.check_interval_seconds
-        _LOGGER.debug(
-            "[MyElectrica] Programez heartbeat periodic la fiecare %d secunde (%d ore)",
-            interval_sec,
-            interval_sec // 3600,
-        )
-
-        async def _heartbeat_periodic(_now) -> None:
-            """Verifică statusul la server dacă cache-ul a expirat.
-
-            Logică:
-            1. Captează is_valid ÎNAINTE de heartbeat
-            2. Dacă cache expirat → contactează serverul
-            3. Captează is_valid DUPĂ heartbeat
-            4. Dacă starea s-a schimbat → reload entries (tranziție curată)
-            5. Reprogramează heartbeat-ul la intervalul actualizat de server
-            """
-            mgr: LicenseManager | None = hass.data.get(DOMAIN, {}).get(
-                LICENSE_DATA_KEY
-            )
-            if not mgr:
-                _LOGGER.debug("[MyElectrica] Heartbeat: LicenseManager nu există, skip")
-                return
-
-            # Captează starea ÎNAINTE de heartbeat
-            was_valid = mgr.is_valid
-
-            if mgr.needs_heartbeat:
-                _LOGGER.debug("[MyElectrica] Heartbeat: cache expirat, verific la server")
-                await mgr.async_heartbeat()
-
-                # Captează starea DUPĂ heartbeat
-                now_valid = mgr.is_valid
-
-                # Detectează tranziții pe care async_check_status nu le-a prins
-                # (ex: server inaccesibil + cache expirat → is_valid devine False)
-                if was_valid and not now_valid:
-                    _LOGGER.warning(
-                        "[MyElectrica] Licența a devenit invalidă — reîncarc senzorii"
-                    )
-                    _update_license_notifications(hass, mgr)
-                    await mgr._async_reload_entries()
-                elif not was_valid and now_valid:
-                    _LOGGER.info(
-                        "[MyElectrica] Licența a redevenit validă — reîncarc senzorii"
-                    )
-                    _update_license_notifications(hass, mgr)
-                    await mgr._async_reload_entries()
-
-                # Reprogramează heartbeat-ul la intervalul actualizat de server
-                new_interval = mgr.check_interval_seconds
-                _LOGGER.debug(
-                    "[MyElectrica] Heartbeat: reprogramez la %d secunde (%d min)",
-                    new_interval,
-                    new_interval // 60,
-                )
-                # Oprește vechiul timer
-                cancel_old = hass.data.get(DOMAIN, {}).get("_cancel_heartbeat")
-                if cancel_old:
-                    cancel_old()
-                # Programează noul timer cu intervalul actualizat
-                cancel_new = async_track_time_interval(
-                    hass,
-                    _heartbeat_periodic,
-                    timedelta(seconds=new_interval),
-                )
-                hass.data[DOMAIN]["_cancel_heartbeat"] = cancel_new
-            else:
-                _LOGGER.debug("[MyElectrica] Heartbeat: cache valid, nu e nevoie de verificare")
-
-        cancel_heartbeat = async_track_time_interval(
-            hass,
-            _heartbeat_periodic,
-            timedelta(seconds=interval_sec),
-        )
-        hass.data[DOMAIN]["_cancel_heartbeat"] = cancel_heartbeat
-        _LOGGER.debug("[MyElectrica] Heartbeat programat și stocat în hass.data")
-
-        # ── Timer precis la valid_until (zero gap la expirare cache) ──
-        def _schedule_cache_expiry_check(mgr_ref: LicenseManager) -> None:
-            """Programează un check EXACT la momentul expirării cache-ului.
-
-            Elimină complet fereastra dintre expirarea cache-ului și
-            următorul heartbeat periodic. La expirare, contactează
-            serverul imediat și declanșează reload dacă starea se schimbă.
-            """
-            # Anulează timer-ul anterior (dacă există)
-            cancel_prev = hass.data.get(DOMAIN, {}).pop(
-                "_cancel_cache_expiry", None
-            )
-            if cancel_prev:
-                cancel_prev()
-
-            valid_until = (mgr_ref._status_token or {}).get("valid_until")
-            if not valid_until or valid_until <= 0:
-                return
-
-            expiry_dt = dt_util.utc_from_timestamp(valid_until)
-            # Adaugă 2 secunde ca marjă (evită race condition cu cache check)
-            expiry_dt = expiry_dt + timedelta(seconds=2)
-
-            async def _on_cache_expiry(_now) -> None:
-                """Callback executat EXACT la expirarea cache-ului."""
-                mgr_now: LicenseManager | None = hass.data.get(
-                    DOMAIN, {}
-                ).get(LICENSE_DATA_KEY)
-                if not mgr_now:
-                    return
-
-                was_valid = mgr_now.is_valid
-                _LOGGER.debug(
-                    "[MyElectrica] Cache expirat — verific imediat la server"
-                )
-                await mgr_now.async_check_status()
-                now_valid = mgr_now.is_valid
-
-                if was_valid != now_valid:
-                    if now_valid:
-                        _LOGGER.info(
-                            "[MyElectrica] Licența a redevenit validă — reîncarc"
-                        )
-                    else:
-                        _LOGGER.warning(
-                            "[MyElectrica] Licența a devenit invalidă — reîncarc"
-                        )
-                    _update_license_notifications(hass, mgr_now)
-                    await mgr_now._async_reload_entries()
-
-                # Programează următorul check (dacă serverul a dat valid_until nou)
-                _schedule_cache_expiry_check(mgr_now)
-
-            cancel_expiry = async_track_point_in_time(
-                hass, _on_cache_expiry, expiry_dt
-            )
-            hass.data[DOMAIN]["_cancel_cache_expiry"] = cancel_expiry
-
-            _LOGGER.debug(
-                "[MyElectrica] Cache expiry timer programat la %s",
-                expiry_dt.isoformat(),
-            )
-
-        _schedule_cache_expiry_check(license_mgr)
-
+        _schedule_license_check(hass, license_mgr)
 
         # ── Notificare re-enable (dacă a fost dezactivată anterior) ──
-        was_disabled = hass.data.pop(f"{DOMAIN}_was_disabled", False)
-        if was_disabled:
+        if hass.data.pop(f"{DOMAIN}_was_disabled", False):
             await license_mgr.async_notify_event("integration_enabled")
 
         if not license_mgr.is_valid:
@@ -279,21 +201,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: MyElectricaConfigEntry) 
                 license_mgr.license_type,
             )
 
-        # ── Verificare inițială notificări expirare licență/trial ──
-        _update_license_notifications(hass, license_mgr)
-    else:
-        _LOGGER.debug(
-            "[MyElectrica] LicenseManager există deja (entry suplimentară)"
-        )
+    license_mgr = hass.data[DOMAIN][LICENSE_DATA_KEY]
+    # La FIECARE setup — după activare, reload-ul intrărilor șterge notificările
+    # chiar dacă managerul de licențe rămâne același (mai multe conturi).
+    _update_license_notifications(hass, license_mgr)
 
     coordinator = MyElectricaCoordinator(hass, entry)
-    try:
-        await coordinator.async_config_entry_first_refresh()
-    except Exception as err:
-        _LOGGER.error(
-            "[MyElectrica] Prima actualizare eșuată: %s", err
-        )
-        raise
+    # Dacă MyElectrica nu răspunde → ConfigEntryNotReady → HA reîncearcă automat
+    await coordinator.async_config_entry_first_refresh()
 
     # Stocăm coordinator-ul direct pe entry (pattern modern)
     entry.runtime_data = coordinator
@@ -315,19 +230,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: MyElectricaConfigEntry)
     _LOGGER.debug("[MyElectrica] Unload platforme: %s", "OK" if unload_ok else "EȘUAT")
 
     if unload_ok:
-        # Eliminăm datele runtime ale acestei entry
-        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
-        _LOGGER.debug("[MyElectrica] Entry %s eliminat din hass.data", entry.entry_id)
-
-        # Verifică dacă mai sunt entry-uri active
+        # Doar intrările ACTIVE contează (cele dezactivate / descărcate nu folosesc
+        # managerul de licențe — altfel acesta și timer-ul nu s-ar opri niciodată).
         entry_ids_ramase = {
             e.entry_id
             for e in hass.config_entries.async_entries(DOMAIN)
-            if e.entry_id != entry.entry_id
+            if e.entry_id != entry.entry_id and e.state in _STARI_ACTIVE
         }
 
         _LOGGER.debug(
-            "[MyElectrica] Entry-uri rămase după unload: %d (%s)",
+            "[MyElectrica] Entry-uri active rămase după unload: %d (%s)",
             len(entry_ids_ramase),
             entry_ids_ramase or "niciuna",
         )
@@ -336,7 +248,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: MyElectricaConfigEntry)
             _LOGGER.info("[MyElectrica] Ultima entry descărcată — curăț domeniul complet")
 
             # ── Notificare lifecycle (înainte de cleanup!) ──
-            mgr = hass.data[DOMAIN].get(LICENSE_DATA_KEY)
+            mgr = hass.data.get(DOMAIN, {}).get(LICENSE_DATA_KEY)
             if mgr and not hass.is_stopping:
                 if entry.disabled_by:
                     await mgr.async_notify_event("integration_disabled")
@@ -348,30 +260,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: MyElectricaConfigEntry)
                         "fingerprint": mgr.fingerprint,
                         "license_key": mgr._data.get("license_key", ""),
                     })
-                    _LOGGER.debug(
-                        "[MyElectrica] Fingerprint salvat pentru async_remove_entry"
-                    )
 
-            # Oprește heartbeat-ul periodic
-            cancel_hb = hass.data[DOMAIN].pop("_cancel_heartbeat", None)
-            if cancel_hb:
-                cancel_hb()
-                _LOGGER.debug("[MyElectrica] Heartbeat periodic oprit")
-
-            # Oprește timer-ul de cache expiry
-            cancel_ce = hass.data[DOMAIN].pop("_cancel_cache_expiry", None)
-            if cancel_ce:
-                cancel_ce()
-                _LOGGER.debug("[MyElectrica] Cache expiry timer oprit")
-
-            # Elimină LicenseManager
-            hass.data[DOMAIN].pop(LICENSE_DATA_KEY, None)
-            _LOGGER.debug("[MyElectrica] LicenseManager eliminat")
-
-            # Elimină domeniul complet
-            hass.data.pop(DOMAIN, None)
-            _LOGGER.debug("[MyElectrica] hass.data[%s] eliminat complet", DOMAIN)
-
+            _cleanup_domain(hass)
             _LOGGER.info("[MyElectrica] Cleanup complet — domeniul %s descărcat", DOMAIN)
     else:
         _LOGGER.error("[MyElectrica] Unload EȘUAT pentru entry_id=%s", entry.entry_id)
@@ -389,6 +279,15 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     # Verifică dacă mai sunt entry-uri rămase
     remaining = hass.config_entries.async_entries(DOMAIN)
     if not remaining:
+        # O intrare ștearsă cât era în „setup retry" nu trece prin async_unload_entry
+        if DOMAIN in hass.data:
+            mgr = hass.data[DOMAIN].get(LICENSE_DATA_KEY)
+            if mgr is not None and f"{DOMAIN}_notify" not in hass.data:
+                hass.data[f"{DOMAIN}_notify"] = {
+                    "fingerprint": mgr.fingerprint,
+                    "license_key": mgr._data.get("license_key", ""),
+                }
+            _cleanup_domain(hass)
         notify_data = hass.data.pop(f"{DOMAIN}_notify", None)
         if notify_data and notify_data.get("fingerprint"):
             await _send_lifecycle_event(
@@ -411,7 +310,7 @@ async def _send_lifecycle_event(
     import json
     import time
 
-    from .license import INTEGRATION, LICENSE_API_URL
+    from .license import INTEGRATION, LICENSE_API_URL, USER_AGENT
 
     timestamp = int(time.time())
     payload = {
@@ -435,7 +334,7 @@ async def _send_lifecycle_event(
             timeout=aiohttp.ClientTimeout(total=10),
             headers={
                 "Content-Type": "application/json",
-                "User-Agent": "MyElectrica-HA-Integration/3.0",
+                "User-Agent": USER_AGENT,
             },
         ) as resp:
             if resp.status == 200:

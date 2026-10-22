@@ -29,15 +29,43 @@ from homeassistant.helpers.selector import (
 )
 
 from .api import MyElectricaAPI
-from .const import CONF_LICENSE_KEY, DEFAULT_UPDATE, DOMAIN, LICENSE_DATA_KEY, LICENSE_PURCHASE_URL
+from .const import (
+    CONF_LICENSE_KEY,
+    DEFAULT_UPDATE,
+    DOMAIN,
+    LICENSE_DATA_KEY,
+    LICENSE_PURCHASE_URL,
+    MAX_UPDATE,
+    MIN_UPDATE,
+)
 from .helper import normalize_title
 
 _LOGGER = logging.getLogger(__name__)
+
+# Interval de actualizare valid (înainte: orice număr, inclusiv 0 sau negativ)
+_INTERVAL = vol.All(vol.Coerce(int), vol.Range(min=MIN_UPDATE, max=MAX_UPDATE))
 
 
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
+_ETICHETE_TIP_LICENTA = {
+    # Tipurile emise de WebAPI (LICENSE_DURATION)
+    "perpetual": ("perpetuă", "perpetual"),
+    "annual": ("anuală", "annual"),
+    "semi_annual": ("semestrială", "semi-annual"),
+    "monthly": ("lunară", "monthly"),
+}
+
+
+def _eticheta_tip_licenta(tip: str | None, is_ro: bool) -> str:
+    """Eticheta afișată pentru tipul de licență primit de la server."""
+    if not tip:
+        return "necunoscut" if is_ro else "unknown"
+    ro, en = _ETICHETE_TIP_LICENTA.get(tip, (tip, tip))
+    return ro if is_ro else en
+
 
 def _build_nlc_options(hierarchy: list[dict]) -> list[SelectOptionDict]:
     """Construiește lista de opțiuni pentru selectorul de NLC-uri."""
@@ -177,7 +205,7 @@ class MyElectricaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("password"): str,
                 vol.Optional(
                     "update_interval", default=DEFAULT_UPDATE
-                ): int,
+                ): _INTERVAL,
             }
         )
 
@@ -290,7 +318,15 @@ class MyElectricaOptionsFlow(config_entries.OptionsFlow):
                 self.hass, username=username, password=password
             )
 
-            if await api.async_login():
+            conflict = any(
+                e.entry_id != self.config_entry.entry_id
+                and e.unique_id == username.lower()
+                for e in self.hass.config_entries.async_entries(DOMAIN)
+            )
+            if conflict:
+                # Contul e deja configurat într-o altă intrare
+                errors["base"] = "already_configured"
+            elif await api.async_login():
                 hierarchy_raw = await api.async_get_hierarchy()
 
                 if hierarchy_raw and hierarchy_raw.get("details"):
@@ -319,7 +355,7 @@ class MyElectricaOptionsFlow(config_entries.OptionsFlow):
                     default=current.get(
                         "update_interval", DEFAULT_UPDATE
                     ),
-                ): int,
+                ): _INTERVAL,
             }
         )
 
@@ -353,13 +389,15 @@ class MyElectricaOptionsFlow(config_entries.OptionsFlow):
                         "select_all": select_all,
                         "selected_nlcs": final_selection,
                     },
+                    title=f"MyElectrica ({self._username})",
+                    unique_id=self._username.lower(),
                 )
 
                 await self.hass.config_entries.async_reload(
                     self.config_entry.entry_id
                 )
 
-                return self.async_create_entry(data={})
+                return self.async_create_entry(data=dict(self.config_entry.options))
 
         current = self.config_entry.data
 
@@ -416,7 +454,7 @@ class MyElectricaOptionsFlow(config_entries.OptionsFlow):
         if server_status == "licensed":
             from datetime import datetime
 
-            tip = mgr.license_type or "necunoscut"
+            tip = _eticheta_tip_licenta(mgr.license_type, True)
             status_lines = [f"✅ Licență activă ({tip})"]
 
             if mgr.license_key_masked:
@@ -435,7 +473,7 @@ class MyElectricaOptionsFlow(config_entries.OptionsFlow):
                     mgr.license_expires_at
                 ).strftime("%d.%m.%Y %H:%M")
                 status_lines.append(f"📅 Expiră la: {exp_date}")
-            elif tip == "perpetual":
+            elif mgr.license_type == "perpetual":
                 status_lines.append("Valabilitate: nelimitată (perpetuă)")
 
             description_placeholders["license_status"] = "\n".join(
@@ -518,15 +556,7 @@ class MyElectricaOptionsFlow(config_entries.OptionsFlow):
                         persistent_notification,
                     )
 
-                    _LICENSE_TYPE_RO = {
-                        "monthly": "lunară",
-                        "yearly": "anuală",
-                        "perpetual": "perpetuă",
-                        "trial": "evaluare",
-                    }
-                    tip_ro = _LICENSE_TYPE_RO.get(
-                        mgr.license_type, mgr.license_type or "necunoscut"
-                    )
+                    tip_ro = _eticheta_tip_licenta(mgr.license_type, True)
 
                     persistent_notification.async_create(
                         self.hass,
@@ -539,16 +569,17 @@ class MyElectricaOptionsFlow(config_entries.OptionsFlow):
                         data=self.config_entry.options
                     )
 
-                # Mapare erori API
+                # Mapare erori API (codurile WebAPI /activate + erorile locale)
                 api_error = result.get("error", "unknown_error")
                 error_map = {
                     "invalid_key": "license_key_invalid",
                     "already_used": "license_already_used",
                     "expired_key": "license_key_expired",
                     "fingerprint_mismatch": "license_fingerprint_mismatch",
-                    "invalid_signature": "license_server_error",
                     "network_error": "license_network_error",
-                    "server_error": "license_server_error",
+                    "http_502": "license_network_error",
+                    "http_503": "license_network_error",  # server temporar ocupat
+                    "http_504": "license_network_error",
                 }
                 errors["base"] = error_map.get(api_error, "license_server_error")
 
